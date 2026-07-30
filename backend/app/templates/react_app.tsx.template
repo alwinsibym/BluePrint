@@ -1,0 +1,26 @@
+import React from 'react';
+
+export function App() {
+  return (
+    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
+      <header style={{ borderBottom: '1px solid #ccc', paddingBottom: '1rem', marginBottom: '2rem' }}>
+        <h1 style={{ color: '#2563eb' }}>{{project_name}}</h1>
+        <p style={{ color: '#64748b' }}>{{project_overview}}</p>
+      </header>
+
+      <main style={{ display: 'grid', gap: '1.5rem' }}>
+        <section style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.5rem' }}>
+          <h2>Project Status</h2>
+          <p>Your starter application foundation is running successfully!</p>
+          <ul>
+            <li><strong>Frontend:</strong> React + Vite</li>
+            <li><strong>Backend:</strong> FastAPI + SQLite</li>
+            <li><strong>AI Framework:</strong> {{ai_framework}}</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default App;
