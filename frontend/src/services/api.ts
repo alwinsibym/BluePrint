@@ -13,6 +13,9 @@ const getBaseURL = () => {
 // Create the Axios instance pointing to the FastAPI backend.
 const api = axios.create({
   baseURL: getBaseURL(),
+  // 10-minute timeout — qwen3:8b can take 2-5 minutes for large prompts.
+  // Without this, the browser default (~30s) cuts off before the model finishes.
+  timeout: 600_000,
   headers: {
     "Content-Type": "application/json",
   },
