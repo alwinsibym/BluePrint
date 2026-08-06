@@ -35,6 +35,7 @@ export function AgentProgress({ agents }: { agents: Agent[] }) {
         <ol className="relative space-y-4">
           {agents.map((agent, i) => (
             <li key={agent.id} className="relative pl-8">
+
               <span
                 className={cn(
                   "absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-medium",

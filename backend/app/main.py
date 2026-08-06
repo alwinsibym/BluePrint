@@ -10,11 +10,13 @@ app = FastAPI(
 # Enable CORS for all origins (local network IPs, localhost, custom ports)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Length"],
 )
+
 
 # Include the router at the root so that /generate is available directly
 app.include_router(api_router)
