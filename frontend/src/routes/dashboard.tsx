@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { LogOut } from "lucide-react";
 import { Navbar } from "@/components/site/Navbar";
 import { Footer } from "@/components/site/Footer";
 import { ProjectForm } from "@/components/dashboard/ProjectForm";
@@ -11,6 +12,9 @@ import { initialAgents, type Agent } from "@/lib/blueprint-data";
 import { generateBlueprint, type GenerateResponse } from "@/services/api";
 import { testLLM } from "@/services/llm";
 import { ScaffoldResponse } from "@/services/scaffold";
+import { useAuth } from "@/lib/AuthContext";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -19,10 +23,18 @@ export const Route = createFileRoute("/dashboard")({
       { name: "description", content: "Generate a full project blueprint with Blueprint's multi-agent planner." },
     ],
   }),
+  beforeLoad: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw redirect({ to: "/login" });
+    }
+  },
   component: Dashboard,
 });
 
 function Dashboard() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>(initialAgents);
   const [generating, setGenerating] = useState(false);
   const [backendResponse, setBackendResponse] = useState<GenerateResponse | null>(null);
@@ -78,15 +90,35 @@ function Dashboard() {
     }
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Signed out successfully.");
+    navigate({ to: "/" });
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
       <Navbar />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Draft, review, and export a complete project blueprint.
-          </p>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              {user?.user_metadata?.full_name
+                ? `Welcome, ${user.user_metadata.full_name} — draft, review, and export a complete project blueprint.`
+                : "Draft, review, and export a complete project blueprint."}
+            </p>
+          </div>
+          <Button
+            id="dashboard-signout-btn"
+            variant="ghost"
+            size="sm"
+            onClick={handleSignOut}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-12">

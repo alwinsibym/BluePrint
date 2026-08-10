@@ -22,10 +22,19 @@ class ArchitectureService(BaseService):
         """Generate and validate an ArchitectureResponse for the given requirements.
         """
         template = self.load_prompt("architecture")
-        
-        # We pass the requirements as a formatted JSON string to the prompt
-        req_json = requirements.model_dump_json(indent=2)
-        prompt = template.replace("{{requirements}}", req_json)
+
+        # Build a compact summary — only send what architecture actually needs.
+        # Sending the full requirements JSON (1500+ chars) causes LLM truncation.
+        ts = requirements.recommended_tech_stack
+        compact = (
+            f"Project: {requirements.project_name}\n"
+            f"Overview: {requirements.project_overview}\n"
+            f"Tech Stack: Frontend={ts.frontend}, Backend={ts.backend}, DB={ts.database}\n"
+            f"Objectives: {'; '.join(requirements.objectives[:5])}\n"
+            f"Key Features: {'; '.join(requirements.functional_requirements[:6])}\n"
+            f"Modules: {'; '.join(requirements.suggested_modules[:6])}"
+        )
+        prompt = template.replace("{{requirements}}", compact)
 
         max_attempts = max(1, settings.REQUIREMENTS_AGENT_RETRY_COUNT)
         last_error: Exception | None = None

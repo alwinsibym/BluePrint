@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Sparkles, FileCode, Database, GitBranch, FileText, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/AuthContext";
 
 export function Hero() {
+  const { user } = useAuth();
   return (
     <section className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 -top-40 -z-10 flex justify-center">
@@ -24,17 +26,24 @@ export function Hero() {
               database schemas, docs, and a scaffolded repo — all from a single prompt.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button asChild size="lg">
-                <Link to="/dashboard">
+              <Button asChild size="lg" className="bg-brand hover:bg-brand/90 text-brand-foreground">
+                <Link to={user ? "/dashboard" : "/signup"}>
                   Get Started <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild size="lg" variant="outline">
-                <Link to="/documentation">Read the docs</Link>
-              </Button>
+              {!user && (
+                <Button asChild size="lg" variant="outline">
+                  <Link to="/login">Sign in</Link>
+                </Button>
+              )}
+              {user && (
+                <Button asChild size="lg" variant="outline">
+                  <Link to="/documentation">Read the docs</Link>
+                </Button>
+              )}
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <span>No signup required</span>
+              <span>Free forever</span>
               <span className="h-1 w-1 rounded-full bg-border" />
               <span>Local AI processing</span>
               <span className="h-1 w-1 rounded-full bg-border" />

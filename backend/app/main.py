@@ -8,10 +8,12 @@ app = FastAPI(
 )
 
 # Enable CORS for all origins (local network IPs, localhost, custom ports)
+# NOTE: allow_credentials=True is NOT compatible with allow_origins=["*"].
+# Since this API uses no cookies or credential-bearing headers, we leave it False.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition", "Content-Length"],
