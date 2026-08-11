@@ -23,13 +23,28 @@ function CodeBlock({ children, language }: { children: string; language?: string
   );
 }
 
+interface ResultsTabsProps {
+  initialIdea?: string | null;
+  onScaffoldGenerated?: (data: ScaffoldResponse) => void;
+  // Allow loading a saved context directly
+  savedContext?: ProjectContextInput | null;
+  savedScaffold?: ScaffoldResponse | null;
+  onRequirementsUpdate?: (data: RequirementsResponse) => void;
+  onArchitectureUpdate?: (data: ArchitectureResponse) => void;
+  onDatabaseUpdate?: (data: DatabaseResponse) => void;
+  onDocumentationUpdate?: (data: DocumentationResponse) => void;
+}
+
 export function ResultsTabs({
   initialIdea,
   onScaffoldGenerated: externalOnScaffoldGenerated,
-}: {
-  initialIdea?: string | null;
-  onScaffoldGenerated?: (data: ScaffoldResponse) => void;
-} = {}) {
+  savedContext,
+  savedScaffold,
+  onRequirementsUpdate,
+  onArchitectureUpdate,
+  onDatabaseUpdate,
+  onDocumentationUpdate,
+}: ResultsTabsProps = {}) {
   const [requirements, setRequirements] = useState<RequirementsResponse | null>(null);
   const [architecture, setArchitecture] = useState<ArchitectureResponse | null>(null);
   const [database, setDatabase] = useState<DatabaseResponse | null>(null);
@@ -37,7 +52,31 @@ export function ResultsTabs({
   const [scaffold, setScaffold] = useState<ScaffoldResponse | null>(null);
   const [activeTab, setActiveTab] = useState("requirements");
   const [exporting, setExporting] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  // Sync state if loading a saved project context
+  useEffect(() => {
+    if (savedContext) {
+      if (savedContext.requirements) setRequirements(savedContext.requirements);
+      if (savedContext.architecture) setArchitecture(savedContext.architecture);
+      if (savedContext.database) setDatabase(savedContext.database);
+      if (savedContext.documentation) setDocumentation(savedContext.documentation);
+    } else {
+      setRequirements(null);
+      setArchitecture(null);
+      setDatabase(null);
+      setDocumentation(null);
+    }
+  }, [savedContext]);
+
+  useEffect(() => {
+    if (savedScaffold) {
+      setScaffold(savedScaffold);
+    } else {
+      setScaffold(null);
+    }
+  }, [savedScaffold]);
 
   const projectContext: ProjectContextInput = {
     requirements,
@@ -48,22 +87,22 @@ export function ResultsTabs({
 
   const handleRequirementsGenerated = (data: RequirementsResponse) => {
     setRequirements(data);
-    setActiveTab("architecture");
+    onRequirementsUpdate?.(data);
   };
 
   const handleArchitectureGenerated = (data: ArchitectureResponse) => {
     setArchitecture(data);
-    setActiveTab("database");
+    onArchitectureUpdate?.(data);
   };
 
   const handleDatabaseGenerated = (data: DatabaseResponse) => {
     setDatabase(data);
-    setActiveTab("docs");
+    onDatabaseUpdate?.(data);
   };
 
   const handleDocumentationGenerated = (data: DocumentationResponse) => {
     setDocumentation(data);
-    setActiveTab("scaffold");
+    onDocumentationUpdate?.(data);
   };
 
   const handleScaffoldGenerated = (data: ScaffoldResponse) => {
@@ -93,6 +132,28 @@ export function ResultsTabs({
     }
   };
 
+  const handleExportDocx = async () => {
+    setExportingDocx(true);
+    setExportError(null);
+    try {
+      const blob = await exportBlueprintDocx(projectContext);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const projectName =
+        requirements?.project_name?.toLowerCase().replace(/\s+/g, "_") ?? "blueprint";
+      link.href = url;
+      link.download = `${projectName}_blueprint.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setExportError(err?.message ?? "Failed to export Word Document (DOCX)");
+    } finally {
+      setExportingDocx(false);
+    }
+  };
+
   // Show the export button once we have at least requirements
   const canExport = requirements !== null;
 
@@ -103,23 +164,42 @@ export function ResultsTabs({
           <CardTitle className="text-lg">Generated Blueprint</CardTitle>
           {canExport && (
             <div className="flex flex-col items-end gap-1">
-              <Button
-                id="export-pdf-btn"
-                size="sm"
-                variant="default"
-                disabled={exporting}
-                onClick={handleExportPdf}
-                className="gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-md transition-all duration-200"
-              >
-                {exporting ? (
-                  <>
-                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                    Generating PDF…
-                  </>
-                ) : (
-                  <>📄 Export PDF Report</>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  id="export-pdf-btn"
+                  size="sm"
+                  variant="default"
+                  disabled={exporting}
+                  onClick={handleExportPdf}
+                  className="gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md transition-all duration-200"
+                >
+                  {exporting ? (
+                    <>
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                      PDF…
+                    </>
+                  ) : (
+                    <>📄 Export PDF</>
+                  )}
+                </Button>
+                <Button
+                  id="export-docx-btn"
+                  size="sm"
+                  variant="outline"
+                  disabled={exportingDocx}
+                  onClick={handleExportDocx}
+                  className="gap-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 shadow-sm transition-all duration-200"
+                >
+                  {exportingDocx ? (
+                    <>
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full" />
+                      Word…
+                    </>
+                  ) : (
+                    <>📝 Export Word</>
+                  )}
+                </Button>
+              </div>
               {exportError && (
                 <span className="text-xs text-destructive">{exportError}</span>
               )}

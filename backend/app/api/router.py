@@ -8,6 +8,7 @@ from app.api.endpoints import (
     documentation_endpoint,
     scaffold_endpoint,
     export_endpoint,
+    docx_endpoint,
 )
 
 api_router = APIRouter()
@@ -19,3 +20,4 @@ api_router.include_router(database_endpoint.router, tags=["database"])
 api_router.include_router(documentation_endpoint.router, tags=["documentation"])
 api_router.include_router(scaffold_endpoint.router, tags=["scaffold"])
 api_router.include_router(export_endpoint.router, tags=["export"])
+api_router.include_router(docx_endpoint.router, tags=["export"])
