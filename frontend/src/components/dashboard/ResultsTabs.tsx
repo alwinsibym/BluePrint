@@ -63,6 +63,12 @@ export function ResultsTabs({
       if (savedContext.architecture) setArchitecture(savedContext.architecture);
       if (savedContext.database) setDatabase(savedContext.database);
       if (savedContext.documentation) setDocumentation(savedContext.documentation);
+
+      // Auto-advance active tab to the latest completed step
+      if (savedContext.documentation) setActiveTab("docs");
+      else if (savedContext.database) setActiveTab("database");
+      else if (savedContext.architecture) setActiveTab("architecture");
+      else if (savedContext.requirements) setActiveTab("requirements");
     } else {
       setRequirements(null);
       setArchitecture(null);
@@ -74,6 +80,7 @@ export function ResultsTabs({
   useEffect(() => {
     if (savedScaffold) {
       setScaffold(savedScaffold);
+      setActiveTab("scaffold");
     } else {
       setScaffold(null);
     }
@@ -222,6 +229,7 @@ export function ResultsTabs({
           <TabsContent value="requirements" className="mt-4">
             <RequirementsPanel
               initialIdea={initialIdea}
+              requirements={requirements}
               onRequirementsGenerated={handleRequirementsGenerated}
             />
           </TabsContent>

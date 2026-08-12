@@ -145,16 +145,25 @@ function RequirementsResult({ data }: { data: RequirementsResponse }) {
 
 export function RequirementsPanel({ 
   initialIdea,
+  requirements: initialRequirements,
   onRequirementsGenerated 
 }: { 
   initialIdea?: string | null;
+  requirements?: RequirementsResponse | null;
   onRequirementsGenerated?: (data: RequirementsResponse) => void;
 }) {
   const [idea, setIdea] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<RequirementsResponse | null>(null);
+  const [result, setResult] = useState<RequirementsResponse | null>(initialRequirements ?? null);
   const [error, setError] = useState<string | null>(null);
   const [lastIdea, setLastIdea] = useState("");
+  const [showEditForm, setShowEditForm] = useState(false);
+
+  useEffect(() => {
+    if (initialRequirements) {
+      setResult(initialRequirements);
+    }
+  }, [initialRequirements]);
 
   const handleGenerate = async (ideaToUse?: string) => {
     const input = (ideaToUse ?? idea).trim();
@@ -170,6 +179,7 @@ export function RequirementsPanel({
     try {
       const data = await createRequirements(input);
       setResult(data);
+      setShowEditForm(false);
       if (onRequirementsGenerated) onRequirementsGenerated(data);
       toast.success("Requirements document generated!");
     } catch (err: unknown) {
@@ -196,66 +206,82 @@ export function RequirementsPanel({
   return (
     <Card className="shadow-card">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Requirements Agent
-        </CardTitle>
-        <CardDescription>
-          Describe your project idea and the AI will produce a structured primary
-          planning document ready for downstream agents.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Input area */}
-        <div className="space-y-2">
-          <label htmlFor="req-idea-textarea" className="text-sm font-medium text-foreground">
-            Project Idea
-          </label>
-          <Textarea
-            id="req-idea-textarea"
-            placeholder="e.g. A web app for personal budgeting with charts, CSV export, and AI-powered spending insights..."
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-            rows={4}
-            disabled={loading}
-            className="resize-none"
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <Button
-            id="req-generate-btn"
-            onClick={() => handleGenerate()}
-            disabled={loading || !idea.trim()}
-            className="gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Generate Requirements
-              </>
-            )}
-          </Button>
-
-          {error && (
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Requirements Agent
+            </CardTitle>
+            <CardDescription>
+              Structured primary planning document generated from project idea.
+            </CardDescription>
+          </div>
+          {result && !loading && (
             <Button
-              id="req-retry-btn"
               variant="outline"
-              onClick={handleRetry}
-              disabled={loading}
-              className="gap-2"
+              size="sm"
+              onClick={() => setShowEditForm(!showEditForm)}
             >
-              <RefreshCw className="h-4 w-4" />
-              Retry
+              {showEditForm ? "Hide Form" : "Re-generate Requirements"}
             </Button>
           )}
         </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Input area — shown if no result yet, or if user clicks Re-generate */}
+        {(!result || showEditForm) && (
+          <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+            <div className="space-y-2">
+              <label htmlFor="req-idea-textarea" className="text-sm font-medium text-foreground">
+                Project Idea
+              </label>
+              <Textarea
+                id="req-idea-textarea"
+                placeholder="e.g. A web app for personal budgeting with charts, CSV export, and AI-powered spending insights..."
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                rows={4}
+                disabled={loading}
+                className="resize-none bg-background"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <Button
+                id="req-generate-btn"
+                onClick={() => handleGenerate()}
+                disabled={loading || !idea.trim()}
+                className="gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Generate Requirements
+                  </>
+                )}
+              </Button>
+
+              {error && (
+                <Button
+                  id="req-retry-btn"
+                  variant="outline"
+                  onClick={handleRetry}
+                  disabled={loading}
+                  className="gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error state */}
         {error && (
@@ -268,6 +294,7 @@ export function RequirementsPanel({
         {/* Loading skeleton */}
         {loading && (
           <div className="space-y-2 mt-4 animate-pulse">
+            <p className="text-xs text-muted-foreground animate-pulse mb-2">Analyzing requirements & user stories…</p>
             {[...Array(5)].map((_, i) => (
               <div key={i} className="h-10 rounded-lg bg-muted/60" />
             ))}

@@ -12,7 +12,7 @@ async def test_llm_endpoint_success(monkeypatch):
     monkeypatch.setattr("app.api.endpoints.llm_endpoint.generate", mock_generate)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
-        response = await ac.post("/test/test-llm", json={"prompt": "Hello"})
+        response = await ac.post("/test-llm", json={"prompt": "Hello"})
         assert response.status_code == 200
         json_data = response.json()
         assert "response" in json_data
@@ -21,6 +21,6 @@ async def test_llm_endpoint_success(monkeypatch):
 @pytest.mark.asyncio
 async def test_llm_endpoint_missing_prompt(monkeypatch):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
-        response = await ac.post("/test/test-llm", json={})
+        response = await ac.post("/test-llm", json={})
         assert response.status_code == 400
         assert response.json()["detail"] == "Missing 'prompt' field"

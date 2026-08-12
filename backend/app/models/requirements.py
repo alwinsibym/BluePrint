@@ -2,29 +2,29 @@ from pydantic import BaseModel, Field
 from typing import List, Dict
 
 class UserStory(BaseModel):
-    role: str = Field(..., description="The role of the user")
-    desire: str = Field(..., description="What the user wants to achieve")
-    benefit: str = Field(..., description="Why it matters")
+    role: str = Field(default="User", description="The role of the user")
+    desire: str = Field(default="interact with system", description="What the user wants to achieve")
+    benefit: str = Field(default="accomplish task", description="Why it matters")
 
 class RecommendedTechStack(BaseModel):
-    frontend: str = Field(..., description="Frontend framework or library")
-    backend: str = Field(..., description="Backend language/framework")
-    database: str = Field(..., description="Database technology")
-    ai_framework: str = Field(..., description="AI/LLM framework used, e.g., Ollama")
+    frontend: str = Field(default="React / TypeScript", description="Frontend framework or library")
+    backend: str = Field(default="FastAPI / Python", description="Backend language/framework")
+    database: str = Field(default="PostgreSQL", description="Database technology")
+    ai_framework: str = Field(default="Ollama", description="AI/LLM framework used, e.g., Ollama")
 
 class RequirementsResponse(BaseModel):
-    project_name: str
-    project_overview: str
-    objectives: List[str]
-    functional_requirements: List[str]
-    non_functional_requirements: List[str]
-    user_roles: List[str]
-    user_stories: List[UserStory]
-    suggested_modules: List[str]
-    assumptions: List[str]
-    constraints: List[str]
-    recommended_tech_stack: RecommendedTechStack
-    future_scope: List[str]
+    project_name: str = Field(..., description="Project name")
+    project_overview: str = Field(..., description="Project overview")
+    objectives: List[str] = Field(default_factory=list)
+    functional_requirements: List[str] = Field(default_factory=list)
+    non_functional_requirements: List[str] = Field(default_factory=list)
+    user_roles: List[str] = Field(default_factory=list)
+    user_stories: List[UserStory] = Field(default_factory=list)
+    suggested_modules: List[str] = Field(default_factory=list)
+    assumptions: List[str] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    recommended_tech_stack: RecommendedTechStack = Field(default_factory=RecommendedTechStack)
+    future_scope: List[str] = Field(default_factory=list)
 
 class RequirementsRequest(BaseModel):
     idea: str = Field(..., description="Natural‑language description of the software project idea")
