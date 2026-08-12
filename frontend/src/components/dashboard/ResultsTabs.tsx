@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { DatabaseResponse, ProjectContextInput } from "@/services/database";
 import { DocumentationResponse } from "@/services/documentation";
 import { ScaffoldResponse } from "@/services/scaffold";
 import { exportBlueprintPdf } from "@/services/export";
+import { exportBlueprintDocx } from "@/services/export_docx";
 import { sampleStructure } from "@/lib/blueprint-data";
 
 function CodeBlock({ children, language }: { children: string; language?: string }) {
