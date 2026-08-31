@@ -5,8 +5,7 @@ POST /export/docx
   Accepts a ProjectContext JSON body and returns a binary Word DOCX stream.
 """
 
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Response
 import io
 
 from app.models.requirements import ProjectContext
@@ -22,12 +21,12 @@ _docx_service = DocxService()
     summary="Export project blueprint as Word DOCX",
     description=(
         "Accepts the full ProjectContext (requirements, architecture, database, "
-        "documentation) and returns a professionally-styled Word document."
+        "documentation) and returns an IEEE-styled Word document."
     ),
-    response_class=StreamingResponse,
+    response_class=Response,
     tags=["export"],
 )
-async def export_docx(context: ProjectContext) -> StreamingResponse:
+async def export_docx(context: ProjectContext) -> Response:
     docx_bytes: bytes = _docx_service.generate_docx(context)
 
     project_name = "blueprint"
@@ -36,8 +35,8 @@ async def export_docx(context: ProjectContext) -> StreamingResponse:
 
     filename = f"{project_name}_blueprint.docx"
 
-    return StreamingResponse(
-        io.BytesIO(docx_bytes),
+    return Response(
+        content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',

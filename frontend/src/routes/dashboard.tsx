@@ -344,9 +344,51 @@ function Dashboard() {
     documentation: currentDocumentation,
   };
 
+  // Derived agent pipeline status to keep sidebar reactive
+  const derivedAgents = PIPELINE_STEPS.map((step) => {
+    if (generating) {
+      const activeAgent = agents.find((a) => a.id === step.id);
+      return {
+        id: step.id,
+        name: step.label,
+        description: step.desc,
+        status: activeAgent?.status ?? "waiting",
+        progress: activeAgent?.progress ?? 0,
+      };
+    }
+    
+    let status: Agent["status"] = "waiting";
+    let progress = 0;
+
+    if (step.id === "requirements" && currentRequirements) {
+      status = "completed";
+      progress = 100;
+    } else if (step.id === "architect" && currentArchitecture) {
+      status = "completed";
+      progress = 100;
+    } else if (step.id === "database" && currentDatabase) {
+      status = "completed";
+      progress = 100;
+    } else if (step.id === "docs" && currentDocumentation) {
+      status = "completed";
+      progress = 100;
+    } else if (step.id === "scaffold" && currentScaffold) {
+      status = "completed";
+      progress = 100;
+    }
+
+    return {
+      id: step.id,
+      name: step.label,
+      description: step.desc,
+      status,
+      progress,
+    };
+  });
+
   // Completion percentage
-  const completedSteps = agents.filter(a => a.status === "completed").length;
-  const overallProgress = generating ? Math.round((completedSteps / 5) * 100) : (currentProjectId && completedSteps === 5 ? 100 : 0);
+  const completedSteps = derivedAgents.filter(a => a.status === "completed").length;
+  const overallProgress = generating ? Math.round((completedSteps / 5) * 100) : (currentProjectId ? Math.round((completedSteps / 5) * 100) : 0);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -595,7 +637,7 @@ function Dashboard() {
                 <CardContent className="pt-0">
                   <ol className="space-y-3">
                     {PIPELINE_STEPS.map((step, i) => {
-                      const agent = agents.find(a => a.id === step.id);
+                      const agent = derivedAgents.find(a => a.id === step.id);
                       const status = agent?.status ?? "waiting";
                       const progress = agent?.progress ?? 0;
                       const StepIcon = step.icon;
