@@ -14,6 +14,7 @@ import { DocumentationResponse } from "@/services/documentation";
 import { ScaffoldResponse } from "@/services/scaffold";
 import { exportBlueprintPdf } from "@/services/export";
 import { exportBlueprintDocx } from "@/services/export_docx";
+import { exportSrsPdf } from "@/services/export_srs";
 import { sampleStructure } from "@/lib/blueprint-data";
 
 function CodeBlock({ children, language }: { children: string; language?: string }) {
@@ -54,6 +55,7 @@ export function ResultsTabs({
   const [activeTab, setActiveTab] = useState("requirements");
   const [exporting, setExporting] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
+  const [exportingSrs, setExportingSrs] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   // Sync state if loading a saved project context
@@ -162,6 +164,29 @@ export function ResultsTabs({
     }
   };
 
+  const handleExportSrs = async () => {
+    if (!requirements) return;
+    setExportingSrs(true);
+    setExportError(null);
+    try {
+      const blob = await exportSrsPdf(requirements);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const projectName =
+        requirements?.project_name?.toLowerCase().replace(/\s+/g, "_") ?? "srs";
+      link.href = url;
+      link.download = `${projectName}_SRS_IEEE830.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setExportError(err?.message ?? "Failed to export SRS document");
+    } finally {
+      setExportingSrs(false);
+    }
+  };
+
   // Show the export button once we have at least requirements
   const canExport = requirements !== null;
 
@@ -172,7 +197,28 @@ export function ResultsTabs({
           <CardTitle className="text-lg">Generated Blueprint</CardTitle>
           {canExport && (
             <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {/* IEEE SRS Document — Requirements only */}
+                <Button
+                  id="export-srs-btn"
+                  size="sm"
+                  variant="outline"
+                  disabled={exportingSrs}
+                  onClick={handleExportSrs}
+                  className="gap-1.5 border-emerald-600 text-emerald-700 hover:bg-emerald-50 shadow-sm font-semibold"
+                  title="Download IEEE Std 830-1998 Software Requirements Specification (SRS)"
+                >
+                  {exportingSrs ? (
+                    <>
+                      <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full" />
+                      SRS…
+                    </>
+                  ) : (
+                    <>📋 SRS (IEEE 830)</>
+                  )}
+                </Button>
+
+                {/* Full Blueprint PDF */}
                 <Button
                   id="export-pdf-btn"
                   size="sm"
@@ -187,9 +233,11 @@ export function ResultsTabs({
                       PDF…
                     </>
                   ) : (
-                    <>📄 Export PDF</>
+                    <>📄 Blueprint PDF</>
                   )}
                 </Button>
+
+                {/* Word DOCX */}
                 <Button
                   id="export-docx-btn"
                   size="sm"
@@ -204,7 +252,7 @@ export function ResultsTabs({
                       Word…
                     </>
                   ) : (
-                    <>📝 Export Word</>
+                    <>📝 Blueprint Word</>
                   )}
                 </Button>
               </div>

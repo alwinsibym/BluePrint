@@ -4,13 +4,8 @@ File Generator
 Builds the complete list of ``ScaffoldFile`` objects for a project given a
 ``GenerationContext``.
 
-This module is purely deterministic – it contains **no** LLM calls.  It maps
-the structured metadata in ``GenerationContext`` to rendered file contents using
-``TemplateLoader`` + ``TemplateRenderer``.
-
-Adding a new technology stack (e.g. Django, Vue) only requires:
-  1. Adding new template files to ``backend/app/templates/``
-  2. Adding a new branch in ``_collect_files``
+This module is purely deterministic – it contains **no** LLM calls. It maps
+the structured metadata in ``GenerationContext`` to rendered file contents.
 """
 
 from __future__ import annotations
@@ -32,19 +27,8 @@ class FileGenerator:
         self._loader = TemplateLoader()
         self._renderer = TemplateRenderer()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def generate(self, ctx: GenerationContext) -> List[ScaffoldFile]:
-        """Return all files that should be created for the project.
-
-        Args:
-            ctx: Validated ``GenerationContext`` from the Scaffold Agent.
-
-        Returns:
-            Ordered list of ``ScaffoldFile`` instances (path + content + language).
-        """
+        """Return all files that should be created for the project."""
         tpl_vars = self._build_template_vars(ctx)
         files: List[ScaffoldFile] = []
 
@@ -58,10 +42,6 @@ class FileGenerator:
         files.extend(self._generated_summary(ctx, files))
 
         return files
-
-    # ------------------------------------------------------------------
-    # Template variable helpers
-    # ------------------------------------------------------------------
 
     def _build_template_vars(self, ctx: GenerationContext) -> dict:
         routes_block = "\n".join(
@@ -94,10 +74,6 @@ class FileGenerator:
         except FileNotFoundError:
             return f"# Template '{filename}' not found – replace with actual content\n"
 
-    # ------------------------------------------------------------------
-    # File group builders
-    # ------------------------------------------------------------------
-
     def _root_files(self, ctx: GenerationContext, v: dict) -> List[ScaffoldFile]:
         files = []
 
@@ -126,18 +102,20 @@ class FileGenerator:
             language="markdown", generated_by="ScaffoldAgent (Project Generator)"
         ))
         files.append(ScaffoldFile(
-            path="LICENSE",
-            content=self._render("license.template", v),
-            language="text", generated_by="ScaffoldAgent (Project Generator)"
-        ))
-        files.append(ScaffoldFile(
             path=".gitignore",
-            content=self._render("gitignore.template", v),
+            content="venv/\n__pycache__/\n*.pyc\nnode_modules/\n.env\n.DS_Store\ndist/\nbuild/\n",
             language="text", generated_by="ScaffoldAgent (Project Generator)"
         ))
+        
+        db_url = "sqlite:///./app.db"
+        if ctx.database_type == "postgres":
+            db_url = f"postgresql://user:password@localhost:5432/{ctx.project_name_slug}"
+        elif ctx.database_type == "mysql":
+            db_url = f"mysql+pymysql://user:password@localhost:3306/{ctx.project_name_slug}"
+
         files.append(ScaffoldFile(
             path=".env.example",
-            content=self._render("env.example.template", v),
+            content=f"PROJECT_NAME=\"{ctx.project_name}\"\nDATABASE_URL=\"{db_url}\"\nDEBUG=True\n",
             language="text", generated_by="ScaffoldAgent (Project Generator)"
         ))
         return files
@@ -169,40 +147,68 @@ class FileGenerator:
 
     def _backend_files(self, ctx: GenerationContext, v: dict) -> List[ScaffoldFile]:
         files = [
-            ScaffoldFile(path="backend/app/main.py", content=self._render("fastapi_main.py.template", v), language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/database.py", content=self._render("fastapi_database.py.template", v), language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/requirements.txt", content=self._render("requirements.txt.template", v), language="text", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/api/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/models/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/schemas/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/services/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/core/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="backend/app/utils/__init__.py", content="", language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/main.py", content=self._render("fastapi_main.py.template", v) if "fastapi_main.py.template" in self._loader.list_templates() else "from fastapi import FastAPI\n\napp = FastAPI()\n", language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/database.py", content=self._render("fastapi_database.py.template", v) if "fastapi_database.py.template" in self._loader.list_templates() else "from sqlalchemy import create_engine\nfrom sqlalchemy.orm import sessionmaker\n", language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/requirements.txt", content="fastapi\nuvicorn\nsqlalchemy\npydantic\npydantic-settings\nalembic\n", language="text", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/__init__.py", content='"""Application Root."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/api/__init__.py", content='"""API Routers."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/models/__init__.py", content='"""SQLAlchemy Models."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/schemas/__init__.py", content='"""Pydantic Schemas."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/services/__init__.py", content='"""Business Logic Services."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="backend/app/core/__init__.py", content='"""Core Configuration."""\n', language="python", generated_by="ScaffoldAgent (Project Generator)"),
+        ]
+
+        db_url = "sqlite:///./app.db"
+        if ctx.database_type == "postgres":
+            db_url = f"postgresql://user:password@localhost:5432/{ctx.project_name_slug}"
+        elif ctx.database_type == "mysql":
+            db_url = f"mysql+pymysql://user:password@localhost:3306/{ctx.project_name_slug}"
+
+        files.append(
             ScaffoldFile(
                 path="backend/app/core/config.py",
                 content=(
                     "from pydantic_settings import BaseSettings\n\n"
                     "class Settings(BaseSettings):\n"
                     f"    PROJECT_NAME: str = \"{ctx.project_name}\"\n"
-                    "    DATABASE_URL: str = \"sqlite:///./app.db\"\n"
+                    f"    DATABASE_URL: str = \"{db_url}\"\n"
                     "    DEBUG: bool = True\n\n"
                     "    class Config:\n        env_file = \".env\"\n\n"
                     "settings = Settings()\n"
                 ),
                 language="python", generated_by="ScaffoldAgent (Project Generator)"
-            ),
-        ]
+            )
+        )
 
-        # Generate stub router files for each entity
         for entity in ctx.entities:
             name = entity.name.lower()
+            camel_name = "".join(x.capitalize() or "_" for x in name.split("_"))
+            
+            # Model
+            model_fields = []
+            for attr in entity.attributes:
+                model_fields.append(f"    {attr['name']} = Column(String)  # Type from {attr['type']}")
+            model_content = f"from sqlalchemy import Column, String, Integer\nfrom app.database import Base\n\nclass {camel_name}(Base):\n    __tablename__ = '{name}s'\n" + "\n".join(model_fields)
+            files.append(ScaffoldFile(path=f"backend/app/models/{name}.py", content=model_content, language="python", generated_by="ScaffoldAgent (Project Generator)"))
+
+            # Schema
+            schema_fields = []
+            for attr in entity.attributes:
+                schema_fields.append(f"    {attr['name']}: str")
+            schema_content = f"from pydantic import BaseModel\n\nclass {camel_name}Base(BaseModel):\n" + "\n".join(schema_fields) + f"\n\nclass {camel_name}Create({camel_name}Base):\n    pass\n\nclass {camel_name}Response({camel_name}Base):\n    id: int\n\n    class Config:\n        orm_mode = True\n"
+            files.append(ScaffoldFile(path=f"backend/app/schemas/{name}.py", content=schema_content, language="python", generated_by="ScaffoldAgent (Project Generator)"))
+            
+            # Service
+            service_content = f"from sqlalchemy.orm import Session\nfrom app.models.{name} import {camel_name}\nfrom app.schemas.{name} import {camel_name}Create\n\nclass {camel_name}Service:\n    @staticmethod\n    def get_all(db: Session):\n        return db.query({camel_name}).all()\n\n    @staticmethod\n    def create(db: Session, obj_in: {camel_name}Create):\n        db_obj = {camel_name}(**obj_in.dict())\n        db.add(db_obj)\n        db.commit()\n        db.refresh(db_obj)\n        return db_obj\n"
+            files.append(ScaffoldFile(path=f"backend/app/services/{name}_service.py", content=service_content, language="python", generated_by="ScaffoldAgent (Project Generator)"))
+
+            # Router
             files.append(ScaffoldFile(
                 path=f"backend/app/api/{name}_router.py",
                 content=(
-                    f"from fastapi import APIRouter\n\nrouter = APIRouter(prefix=\"/{name}s\", tags=[\"{entity.name}\"])\n\n"
-                    f"@router.get(\"/\")\nasync def list_{name}s():\n    return []  # TODO: implement\n\n"
-                    f"@router.post(\"/\")\nasync def create_{name}(data: dict):\n    return data  # TODO: implement\n"
+                    f"from fastapi import APIRouter, Depends\nfrom sqlalchemy.orm import Session\nfrom app.database import get_db\nfrom app.schemas.{name} import {camel_name}Create, {camel_name}Response\nfrom app.services.{name}_service import {camel_name}Service\n\nrouter = APIRouter(prefix=\"/{name}s\", tags=[\"{camel_name}\"])\n\n"
+                    f"@router.get(\"/\", response_model=list[{camel_name}Response])\nasync def list_{name}s(db: Session = Depends(get_db)):\n    return {camel_name}Service.get_all(db)\n\n"
+                    f"@router.post(\"/\", response_model={camel_name}Response)\nasync def create_{name}(data: {camel_name}Create, db: Session = Depends(get_db)):\n    return {camel_name}Service.create(db, data)\n"
                 ),
                 language="python", generated_by="ScaffoldAgent (Project Generator)"
             ))
@@ -211,8 +217,8 @@ class FileGenerator:
 
     def _frontend_files(self, ctx: GenerationContext, v: dict) -> List[ScaffoldFile]:
         return [
-            ScaffoldFile(path="frontend/src/App.tsx", content=self._render("react_app.tsx.template", v), language="typescript", generated_by="ScaffoldAgent (Project Generator)"),
-            ScaffoldFile(path="frontend/package.json", content=self._render("package.json.template", v), language="json", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="frontend/src/App.tsx", content=self._render("react_app.tsx.template", v) if "react_app.tsx.template" in self._loader.list_templates() else f"export default function App() {{ return <div>Welcome to {ctx.project_name}</div>; }}", language="typescript", generated_by="ScaffoldAgent (Project Generator)"),
+            ScaffoldFile(path="frontend/package.json", content=self._render("package.json.template", v) if "package.json.template" in self._loader.list_templates() else "{\n  \"name\": \"frontend\",\n  \"version\": \"1.0.0\"\n}", language="json", generated_by="ScaffoldAgent (Project Generator)"),
             ScaffoldFile(path="frontend/src/main.tsx", content=(
                 "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\n"
                 "ReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n"

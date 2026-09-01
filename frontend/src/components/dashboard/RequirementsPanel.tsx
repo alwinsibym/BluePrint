@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronDown, ChevronUp, RefreshCw, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, RefreshCw, Sparkles, AlertCircle, Edit3, Save, Plus, Trash, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { createRequirements, type RequirementsResponse } from "@/services/requirements";
+import { Input } from "@/components/ui/input";
+import { createRequirements, type RequirementsResponse, type UserStory } from "@/services/requirements";
 
 // ──────────────────────────────────────────────
-// Sub-components
+// Sub-components for display
 // ──────────────────────────────────────────────
 
 interface AccordionSectionProps {
@@ -20,7 +21,7 @@ interface AccordionSectionProps {
 function AccordionSection({ title, badge, children, defaultOpen = false }: AccordionSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden mb-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -55,10 +56,10 @@ function BulletList({ items }: { items: string[] }) {
 
 function TechStackGrid({ stack }: { stack: RequirementsResponse["recommended_tech_stack"] }) {
   const entries = [
-    { label: "Frontend", value: stack.frontend },
-    { label: "Backend", value: stack.backend },
-    { label: "Database", value: stack.database },
-    { label: "AI Framework", value: stack.ai_framework },
+    { label: "Frontend Client", value: stack.frontend },
+    { label: "Backend Application", value: stack.backend },
+    { label: "Database Server", value: stack.database },
+    { label: "Inference Engine", value: stack.ai_framework },
   ];
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -72,7 +73,7 @@ function TechStackGrid({ stack }: { stack: RequirementsResponse["recommended_tec
   );
 }
 
-function UserStoriesTable({ stories }: { stories: RequirementsResponse["user_stories"] }) {
+function UserStoriesTable({ stories }: { stories: UserStory[] }) {
   if (!stories.length) return <p className="text-muted-foreground italic text-xs">No user stories generated.</p>;
   return (
     <div className="space-y-2">
@@ -87,60 +88,8 @@ function UserStoriesTable({ stories }: { stories: RequirementsResponse["user_sto
   );
 }
 
-function RequirementsResult({ data }: { data: RequirementsResponse }) {
-  return (
-    <div className="space-y-2 mt-4">
-      {/* Header summary */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-        <h2 className="font-semibold text-base text-foreground">{data.project_name}</h2>
-        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{data.project_overview}</p>
-      </div>
-
-      <AccordionSection title="Objectives" badge={data.objectives.length} defaultOpen>
-        <BulletList items={data.objectives} />
-      </AccordionSection>
-
-      <AccordionSection title="Functional Requirements" badge={data.functional_requirements.length}>
-        <BulletList items={data.functional_requirements} />
-      </AccordionSection>
-
-      <AccordionSection title="Non-Functional Requirements" badge={data.non_functional_requirements.length}>
-        <BulletList items={data.non_functional_requirements} />
-      </AccordionSection>
-
-      <AccordionSection title="User Roles" badge={data.user_roles.length}>
-        <BulletList items={data.user_roles} />
-      </AccordionSection>
-
-      <AccordionSection title="User Stories" badge={data.user_stories.length}>
-        <UserStoriesTable stories={data.user_stories} />
-      </AccordionSection>
-
-      <AccordionSection title="Suggested Modules" badge={data.suggested_modules.length}>
-        <BulletList items={data.suggested_modules} />
-      </AccordionSection>
-
-      <AccordionSection title="Recommended Tech Stack">
-        <TechStackGrid stack={data.recommended_tech_stack} />
-      </AccordionSection>
-
-      <AccordionSection title="Assumptions" badge={data.assumptions.length}>
-        <BulletList items={data.assumptions} />
-      </AccordionSection>
-
-      <AccordionSection title="Constraints" badge={data.constraints.length}>
-        <BulletList items={data.constraints} />
-      </AccordionSection>
-
-      <AccordionSection title="Future Scope" badge={data.future_scope.length}>
-        <BulletList items={data.future_scope} />
-      </AccordionSection>
-    </div>
-  );
-}
-
 // ──────────────────────────────────────────────
-// Main panel
+// Main panel component
 // ──────────────────────────────────────────────
 
 export function RequirementsPanel({ 
@@ -159,11 +108,83 @@ export function RequirementsPanel({
   const [lastIdea, setLastIdea] = useState("");
   const [showEditForm, setShowEditForm] = useState(false);
 
+  // Interactive editing states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editOverview, setEditOverview] = useState("");
+  const [editObjectives, setEditObjectives] = useState<string[]>([]);
+  const [editFunc, setEditFunc] = useState<string[]>([]);
+  const [editNonFunc, setEditNonFunc] = useState<string[]>([]);
+  const [editRoles, setEditRoles] = useState<string[]>([]);
+  const [editStories, setEditStories] = useState<UserStory[]>([]);
+  const [editStack, setEditStack] = useState<RequirementsResponse["recommended_tech_stack"]>({
+    frontend: "",
+    backend: "",
+    database: "",
+    ai_framework: ""
+  });
+
+  // Sync state if initialRequirements updates
   useEffect(() => {
     if (initialRequirements) {
       setResult(initialRequirements);
     }
   }, [initialRequirements]);
+
+  // Load editing state
+  const startEditing = () => {
+    if (!result) return;
+    setEditOverview(result.project_overview || "");
+    setEditObjectives([...(result.objectives || [])]);
+    setEditFunc([...(result.functional_requirements || [])]);
+    setEditNonFunc([...(result.non_functional_requirements || [])]);
+    setEditRoles([...(result.user_roles || [])]);
+    setEditStories([...(result.user_stories || [])]);
+    setEditStack({ ...(result.recommended_tech_stack || { frontend: "", backend: "", database: "", ai_framework: "" }) });
+    setIsEditing(true);
+  };
+
+  const saveEdits = () => {
+    if (!result) return;
+    const updated: RequirementsResponse = {
+      ...result,
+      project_overview: editOverview,
+      objectives: editObjectives,
+      functional_requirements: editFunc,
+      non_functional_requirements: editNonFunc,
+      user_roles: editRoles,
+      user_stories: editStories,
+      recommended_tech_stack: editStack,
+    };
+    setResult(updated);
+    setIsEditing(false);
+    if (onRequirementsGenerated) onRequirementsGenerated(updated);
+    toast.success("Requirements refined and validated by developer!");
+  };
+
+  // Helper arrays update functions
+  const addBullet = (setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter(prev => [...prev, "New requirement specification"]);
+  };
+
+  const updateBullet = (idx: number, val: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter(prev => prev.map((item, i) => i === idx ? val : item));
+  };
+
+  const removeBullet = (idx: number, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addUserStory = () => {
+    setEditStories(prev => [...prev, { role: "User", desire: "do action", benefit: "get result" }]);
+  };
+
+  const updateUserStory = (idx: number, key: keyof UserStory, val: string) => {
+    setEditStories(prev => prev.map((story, i) => i === idx ? { ...story, [key]: val } : story));
+  };
+
+  const removeUserStory = (idx: number) => {
+    setEditStories(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const handleGenerate = async (ideaToUse?: string) => {
     const input = (ideaToUse ?? idea).trim();
@@ -195,7 +216,6 @@ export function RequirementsPanel({
 
   const handleRetry = () => handleGenerate(lastIdea);
 
-  // Auto-generate if initialIdea is provided from the main dashboard form
   useEffect(() => {
     if (initialIdea && initialIdea.trim() !== "" && initialIdea !== lastIdea) {
       setIdea(initialIdea);
@@ -205,35 +225,43 @@ export function RequirementsPanel({
 
   return (
     <Card className="shadow-card">
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 border-b border-border/50">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-primary" />
-              Requirements Agent
+              Requirements Specification (IEEE Std 830)
             </CardTitle>
             <CardDescription>
-              Structured primary planning document generated from project idea.
+              Interactive requirements refinement panel. Edit to eliminate AI hallucinations.
             </CardDescription>
           </div>
-          {result && !loading && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowEditForm(!showEditForm)}
-            >
-              {showEditForm ? "Hide Form" : "Re-generate Requirements"}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {result && !loading && !isEditing && (
+              <Button variant="outline" size="sm" onClick={startEditing} className="gap-1 text-primary">
+                <Edit3 className="h-3.5 w-3.5" /> Refine Specs
+              </Button>
+            )}
+            {result && !loading && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowEditForm(!showEditForm)}
+              >
+                {showEditForm ? "Hide Form" : "Re-generate"}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Input area — shown if no result yet, or if user clicks Re-generate */}
+
+      <CardContent className="space-y-4 pt-4">
+        {/* Input area */}
         {(!result || showEditForm) && (
           <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
             <div className="space-y-2">
               <label htmlFor="req-idea-textarea" className="text-sm font-medium text-foreground">
-                Project Idea
+                Describe your project idea in detail:
               </label>
               <Textarea
                 id="req-idea-textarea"
@@ -246,7 +274,6 @@ export function RequirementsPanel({
               />
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2">
               <Button
                 id="req-generate-btn"
@@ -266,19 +293,6 @@ export function RequirementsPanel({
                   </>
                 )}
               </Button>
-
-              {error && (
-                <Button
-                  id="req-retry-btn"
-                  variant="outline"
-                  onClick={handleRetry}
-                  disabled={loading}
-                  className="gap-2"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Retry
-                </Button>
-              )}
             </div>
           </div>
         )}
@@ -301,8 +315,167 @@ export function RequirementsPanel({
           </div>
         )}
 
-        {/* Result */}
-        {result && !loading && <RequirementsResult data={result} />}
+        {/* ─── INTERACTIVE EDITOR ─── */}
+        {result && isEditing && (
+          <div className="space-y-4 border border-brand/30 bg-brand/5 rounded-xl p-4 mt-4">
+            <div className="flex items-center justify-between border-b border-brand/20 pb-2 mb-4">
+              <span className="text-sm font-semibold text-brand">Refining Project Requirements</span>
+              <Button size="sm" onClick={saveEdits} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Check className="h-4 w-4" /> Approve & Save
+              </Button>
+            </div>
+
+            {/* Overview */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Scope & Overview</label>
+              <Textarea
+                value={editOverview}
+                onChange={(e) => setEditOverview(e.target.value)}
+                rows={4}
+                className="bg-background"
+              />
+            </div>
+
+            {/* Functional Requirements */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Functional Requirements</label>
+                <Button variant="ghost" size="sm" onClick={() => addBullet(setEditFunc)} className="h-6 gap-1 text-primary text-xs">
+                  <Plus className="h-3 w-3" /> Add Row
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                {editFunc.map((f, i) => (
+                  <div key={i} className="flex gap-2">
+                    <Input value={f} onChange={(e) => updateBullet(i, e.target.value, setEditFunc)} className="bg-background h-8" />
+                    <Button variant="ghost" size="icon" onClick={() => removeBullet(i, setEditFunc)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                      <Trash className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Non-Functional Requirements */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Non-Functional Requirements</label>
+                <Button variant="ghost" size="sm" onClick={() => addBullet(setEditNonFunc)} className="h-6 gap-1 text-primary text-xs">
+                  <Plus className="h-3 w-3" /> Add Row
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                {editNonFunc.map((nf, i) => (
+                  <div key={i} className="flex gap-2">
+                    <Input value={nf} onChange={(e) => updateBullet(i, e.target.value, setEditNonFunc)} className="bg-background h-8" />
+                    <Button variant="ghost" size="icon" onClick={() => removeBullet(i, setEditNonFunc)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                      <Trash className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tech Stack */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technology Profile</label>
+              <div className="grid grid-cols-2 gap-2 bg-background p-3 rounded-lg border">
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Frontend</span>
+                  <Input value={editStack.frontend} onChange={(e) => setEditStack(prev => ({ ...prev, frontend: e.target.value }))} className="h-8 mt-1" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Backend</span>
+                  <Input value={editStack.backend} onChange={(e) => setEditStack(prev => ({ ...prev, backend: e.target.value }))} className="h-8 mt-1" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Database</span>
+                  <Input value={editStack.database} onChange={(e) => setEditStack(prev => ({ ...prev, database: e.target.value }))} className="h-8 mt-1" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Inference</span>
+                  <Input value={editStack.ai_framework} onChange={(e) => setEditStack(prev => ({ ...prev, ai_framework: e.target.value }))} className="h-8 mt-1" />
+                </div>
+              </div>
+            </div>
+
+            {/* User Stories */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User Stories</label>
+                <Button variant="ghost" size="sm" onClick={addUserStory} className="h-6 gap-1 text-primary text-xs">
+                  <Plus className="h-3 w-3" /> Add Use Case
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {editStories.map((story, i) => (
+                  <div key={i} className="flex flex-col gap-1.5 bg-background p-2.5 rounded-lg border border-border">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground font-medium">As a</span>
+                      <Input value={story.role} onChange={(e) => updateUserStory(i, "role", e.target.value)} className="h-7 text-xs flex-1" />
+                      <Button variant="ghost" size="icon" onClick={() => removeUserStory(i)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                        <Trash className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground font-medium">I want to</span>
+                      <Input value={story.desire} onChange={(e) => updateUserStory(i, "desire", e.target.value)} className="h-7 text-xs flex-1" />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground font-medium">so that</span>
+                      <Input value={story.benefit} onChange={(e) => updateUserStory(i, "benefit", e.target.value)} className="h-7 text-xs flex-1" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
+              <Button size="sm" onClick={saveEdits} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Check className="h-4 w-4" /> Save Specifications
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── DISPLAY RESULT ─── */}
+        {result && !loading && !isEditing && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <h2 className="font-semibold text-base text-foreground">{result.project_name}</h2>
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{result.project_overview}</p>
+            </div>
+
+            <AccordionSection title="Objectives" badge={result.objectives?.length} defaultOpen>
+              <BulletList items={result.objectives || []} />
+            </AccordionSection>
+
+            <AccordionSection title="Functional Requirements" badge={result.functional_requirements?.length} defaultOpen>
+              <BulletList items={result.functional_requirements || []} />
+            </AccordionSection>
+
+            <AccordionSection title="Non-Functional Requirements" badge={result.non_functional_requirements?.length}>
+              <BulletList items={result.non_functional_requirements || []} />
+            </AccordionSection>
+
+            <AccordionSection title="User Roles" badge={result.user_roles?.length}>
+              <BulletList items={result.user_roles || []} />
+            </AccordionSection>
+
+            <AccordionSection title="User Stories" badge={result.user_stories?.length}>
+              <UserStoriesTable stories={result.user_stories || []} />
+            </AccordionSection>
+
+            <AccordionSection title="Suggested Modules" badge={result.suggested_modules?.length}>
+              <BulletList items={result.suggested_modules || []} />
+            </AccordionSection>
+
+            <AccordionSection title="Recommended Tech Stack">
+              <TechStackGrid stack={result.recommended_tech_stack} />
+            </AccordionSection>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -1,314 +1,185 @@
+"""
+docx_service.py
+───────────────
+Generates a full Blueprint (Requirements + Architecture + Database + Documentation)
+as an IEEE-styled Word DOCX document with navy and green colored headings.
+"""
+
 import io
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import nsdecls, qn
-from datetime import datetime
-
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from app.models.requirements import ProjectContext
 
-class DocxService:
-    """Compiles the ProjectContext produced by the planning agents into an
-    IEEE Standard formatted DOCX document using python-docx.
-    """
+# Brand Colors matching PDF
+NAVY = RGBColor(26, 39, 68)   # #1A2744
+GREEN = RGBColor(21, 87, 36)  # #155724
 
+
+def _shade_cell(cell, hex_color: str):
+    """Apply background color to a DOCX table cell."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), hex_color)
+    tcPr.append(shd)
+
+
+def _set_cell_text_color(cell, color: RGBColor):
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.color.rgb = color
+
+
+class DocxService:
     def generate_docx(self, context: ProjectContext) -> bytes:
         doc = Document()
+        
+        req = context.requirements
+        arch = context.architecture
+        db = context.database
+        docs = context.documentation
 
-        # Page Setup - Standard 1 inch margins
-        for section in doc.sections:
-            section.top_margin = Inches(1)
-            section.bottom_margin = Inches(1)
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
+        # Styles
+        style_normal = doc.styles['Normal']
+        style_normal.font.name = 'Times New Roman'
+        style_normal.font.size = Pt(11)
 
-        # Set default styles to Times New Roman (IEEE Standard font)
-        style = doc.styles['Normal']
-        font = style.font
-        font.name = 'Times New Roman'
-        font.size = Pt(10)
-        font.color.rgb = RGBColor(0, 0, 0) # Black
+        # Cover Page
+        project_name = (req.project_name if req else "UNTITLED").upper()
+        
+        doc.add_heading('BLUEPRINT', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title = doc.add_paragraph(project_name)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.runs[0].font.name = 'Times New Roman'
+        title.runs[0].font.size = Pt(24)
+        title.runs[0].font.bold = True
+        title.runs[0].font.color.rgb = NAVY
 
-        project_name = "UNTITLED SYSTEM SPECIFICATION"
-        overview = ""
-        if context.requirements:
-            project_name = context.requirements.project_name or project_name
-            overview = context.requirements.project_overview or ""
-
-        # ─── 1. IEEE TITLE & COVER PAGE ───
-        title_p = doc.add_paragraph()
-        title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title_p.paragraph_format.space_before = Pt(72)
-        title_p.paragraph_format.space_after = Pt(12)
-        title_run = title_p.add_run(project_name.upper())
-        title_run.font.name = 'Times New Roman'
-        title_run.font.size = Pt(24)
-        title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(0, 0, 0)
-
-        subtitle_p = doc.add_paragraph()
-        subtitle_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        subtitle_p.paragraph_format.space_after = Pt(24)
-        sub_run = subtitle_p.add_run("SYSTEM ENGINEERING BLUEPRINT AND SRS DOCUMENTATION")
-        sub_run.font.name = 'Times New Roman'
-        sub_run.font.size = Pt(12)
-        sub_run.font.bold = False
-        sub_run.font.color.rgb = RGBColor(80, 80, 80)
-
-        author_p = doc.add_paragraph()
-        author_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        author_p.paragraph_format.space_after = Pt(48)
-        auth_run = author_p.add_run(
-            f"Prepared by: BluePrint Automated SDLC Agent Suite\n"
-            f"Date: {datetime.now().strftime('%B %d, %Y')}\n"
-            f"Standards Compliance: IEEE Std 830-1998 / ISO 12207"
-        )
-        auth_run.font.name = 'Times New Roman'
-        auth_run.font.size = Pt(10)
-        auth_run.font.color.rgb = RGBColor(0, 0, 0)
-
-        if overview:
-            # Abstract header
-            abs_h = doc.add_paragraph()
-            abs_h.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            abs_h_run = abs_h.add_run("Abstract—")
-            abs_h_run.font.name = 'Times New Roman'
-            abs_h_run.font.bold = True
-            abs_h_run.font.italic = True
-            
-            abs_run = abs_h.add_run(overview)
-            abs_run.font.name = 'Times New Roman'
-            abs_run.font.italic = True
-            abs_run.font.size = Pt(10)
-
+        doc.add_paragraph('\n')
+        sub = doc.add_paragraph('System Architecture & Design Document')
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub.runs[0].font.size = Pt(14)
         doc.add_page_break()
 
-        # Helper for IEEE custom headings
         def add_ieee_heading(text: str, level: int):
-            h = doc.add_paragraph()
-            h.paragraph_format.space_before = Pt(18)
-            h.paragraph_format.space_after = Pt(6)
-            h.paragraph_format.keep_with_next = True
-            
+            h = doc.add_heading(level=level)
             run = h.add_run(text)
             run.font.name = 'Times New Roman'
             if level == 1:
-                run.font.size = Pt(12)
                 run.font.bold = True
-                h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run.font.size = Pt(14)
+                run.font.color.rgb = NAVY
+                h.alignment = WD_ALIGN_PARAGRAPH.LEFT
             elif level == 2:
-                run.font.size = Pt(11)
                 run.font.bold = True
                 run.font.italic = True
+                run.font.size = Pt(12)
+                run.font.color.rgb = GREEN
                 h.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            else:
-                run.font.size = Pt(10)
-                run.font.italic = True
-                h.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            return h
 
-        # ─── 2. REQUIREMENTS SECTION ───
-        if context.requirements:
-            req = context.requirements
-            add_ieee_heading("II. SOFTWARE REQUIREMENTS SPECIFICATION", 1)
+        def add_table_with_header(rows_data, caption: str):
+            if caption:
+                cap = doc.add_paragraph(caption)
+                cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                cap.runs[0].font.bold = True
+                cap.runs[0].font.size = Pt(9)
 
-            add_ieee_heading("A. Project Scope and Overview", 2)
-            doc.add_paragraph(req.project_overview)
-
-            if req.objectives:
-                add_ieee_heading("B. System Objectives", 2)
-                for obj in req.objectives:
-                    doc.add_paragraph(obj, style='List Bullet')
-
-            if req.functional_requirements:
-                add_ieee_heading("C. Functional Requirements", 2)
-                for f_req in req.functional_requirements:
-                    doc.add_paragraph(f_req, style='List Bullet')
-
-            if req.non_functional_requirements:
-                add_ieee_heading("D. Non-Functional Requirements", 2)
-                for nf_req in req.non_functional_requirements:
-                    doc.add_paragraph(nf_req, style='List Bullet')
-
-            if req.user_roles:
-                add_ieee_heading("E. User Roles & Personas", 2)
-                for role in req.user_roles:
-                    doc.add_paragraph(role, style='List Bullet')
-
-            if req.user_stories:
-                add_ieee_heading("F. Use Case / User Story Breakdown", 2)
+            table = doc.add_table(rows=len(rows_data), cols=len(rows_data[0]))
+            table.style = 'Table Grid'
+            
+            # Format header row
+            hdr_cells = table.rows[0].cells
+            for i, text in enumerate(rows_data[0]):
+                hdr_cells[i].text = str(text)
+                hdr_cells[i].paragraphs[0].runs[0].font.bold = True
+                hdr_cells[i].paragraphs[0].runs[0].font.color.rgb = RGBColor(255, 255, 255)
+                _shade_cell(hdr_cells[i], '1A2744')  # NAVY hex
                 
-                # IEEE Style Table Caption
-                caption = doc.add_paragraph()
-                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                cap_run = caption.add_run("TABLE I. USER STORY SPECIFICATION")
-                cap_run.font.bold = True
-                cap_run.font.size = Pt(9)
-                
-                table = doc.add_table(rows=1, cols=3)
-                table.autofit = True
-                
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = 'Role'
-                hdr_cells[1].text = 'Desire'
-                hdr_cells[2].text = 'Benefit'
-                for cell in hdr_cells:
-                    cell.paragraphs[0].runs[0].font.bold = True
-                    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="EAECEE"/>')
-                    cell._tc.get_or_add_tcPr().append(shading_elm)
-
-                for story in req.user_stories:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = story.role or ""
-                    row_cells[1].text = story.desire or ""
-                    row_cells[2].text = story.benefit or ""
-
-            if req.recommended_tech_stack:
-                add_ieee_heading("G. Technology Stack Composition", 2)
-                ts = req.recommended_tech_stack
-                
-                caption = doc.add_paragraph()
-                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                cap_run = caption.add_run("TABLE II. RECOMMENDED TECHNOLOGY PROFILE")
-                cap_run.font.bold = True
-                cap_run.font.size = Pt(9)
-
-                table = doc.add_table(rows=5, cols=2)
-                table.rows[0].cells[0].text = "Layer"
-                table.rows[0].cells[1].text = "Technology Profile"
-                for cell in table.rows[0].cells:
-                    cell.paragraphs[0].runs[0].font.bold = True
-                    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="EAECEE"/>')
-                    cell._tc.get_or_add_tcPr().append(shading_elm)
-
-                tech_rows = [
-                    ("Frontend Client", ts.frontend),
-                    ("Backend Application", ts.backend),
-                    ("Database Server", ts.database),
-                    ("Inference Engine", ts.ai_framework),
-                ]
-                for idx, (layer, tech) in enumerate(tech_rows, start=1):
-                    table.rows[idx].cells[0].text = layer
-                    table.rows[idx].cells[1].text = tech or "—"
-
-            doc.add_page_break()
-
-        # ─── 3. SYSTEM ARCHITECTURE ───
-        if context.architecture:
-            arch = context.architecture
-            add_ieee_heading("III. SYSTEM ARCHITECTURE DESIGN", 1)
-
-            add_ieee_heading("A. High-Level Architecture Description", 2)
-            doc.add_paragraph(arch.high_level_architecture)
-
-            if arch.data_flow:
-                add_ieee_heading("B. Information Flow & Core Mechanics", 2)
-                doc.add_paragraph(arch.data_flow)
-
-            if arch.folder_structure:
-                add_ieee_heading("C. Logical Project Directory Structure", 2)
-                p = doc.add_paragraph()
-                p.paragraph_format.left_indent = Inches(0.5)
-                run = p.add_run("\n".join(arch.folder_structure))
-                run.font.name = 'Courier New'
-                run.font.size = Pt(9)
-
-            if arch.component_breakdown:
-                add_ieee_heading("D. Component Decomposition", 2)
-                for comp in arch.component_breakdown:
-                    p = doc.add_paragraph()
-                    p.add_run(f"Component: {comp.name}").bold = True
-                    doc.add_paragraph(comp.description or "")
-                    if comp.dependencies:
-                        dep_p = doc.add_paragraph()
-                        dep_p.paragraph_format.left_indent = Inches(0.25)
-                        dep_p.add_run("Dependencies: ").italic = True
-                        dep_p.add_run(", ".join(comp.dependencies))
-
-            doc.add_page_break()
-
-        # ─── 4. DATABASE SCHEMA ───
-        if context.database:
-            db = context.database
-            add_ieee_heading("IV. DATABASE DESIGN AND SCHEMA NORMALIZATION", 1)
-
-            if db.database_overview:
-                add_ieee_heading("A. Database Overview", 2)
-                doc.add_paragraph(db.database_overview)
-
-            if db.normalization_notes:
-                add_ieee_heading("B. Normalization and Integrity Constraints", 2)
-                doc.add_paragraph(db.normalization_notes)
-
-            if db.relationships:
-                add_ieee_heading("C. Entity-Relationship Cardinalities", 2)
-                for rel in db.relationships:
-                    doc.add_paragraph(rel, style='List Bullet')
-
-            if db.entities:
-                add_ieee_heading("D. Entity Specifications", 2)
-                for ent in db.entities:
-                    p = doc.add_paragraph()
-                    p.add_run(f"Table Schema: {ent.name}").bold = True
-                    doc.add_paragraph(ent.description or "")
+            # Data rows
+            for r_idx in range(1, len(rows_data)):
+                row_cells = table.rows[r_idx].cells
+                bg_color = 'FFFFFF' if r_idx % 2 == 1 else 'F8F9FA'
+                for c_idx, text in enumerate(rows_data[r_idx]):
+                    row_cells[c_idx].text = str(text)
+                    _shade_cell(row_cells[c_idx], bg_color)
                     
-                    if ent.attributes:
-                        table = doc.add_table(rows=1, cols=1)
-                        hdr_cell = table.rows[0].cells[0]
-                        hdr_cell.text = "Columns / Attributes"
-                        hdr_cell.paragraphs[0].runs[0].font.bold = True
-                        shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="EAECEE"/>')
-                        hdr_cell._tc.get_or_add_tcPr().append(shading_elm)
-                        
-                        for attr in ent.attributes:
-                            row = table.add_row()
-                            row.cells[0].text = attr
+            doc.add_paragraph()
 
-                    p_keys = []
-                    if ent.primary_key:
-                        p_keys.append(f"Primary Key: {ent.primary_key}")
-                    if ent.foreign_keys:
-                        p_keys.append(f"Foreign Keys: {', '.join(ent.foreign_keys)}")
-                    if p_keys:
-                        doc.add_paragraph(" | ".join(p_keys))
-
-            if db.sql_schema:
-                add_ieee_heading("E. ANSI-Compliant DDL Statements", 2)
-                p = doc.add_paragraph()
-                p.paragraph_format.left_indent = Inches(0.5)
-                run = p.add_run(db.sql_schema)
-                run.font.name = 'Courier New'
-                run.font.size = Pt(9)
-
+        # I. Requirements
+        if req:
+            add_ieee_heading('I. SYSTEM REQUIREMENTS', 1)
+            
+            add_ieee_heading('A. Project Overview', 2)
+            doc.add_paragraph(req.project_overview or "No overview provided.")
+            
+            add_ieee_heading('B. Functional Requirements', 2)
+            for item in (req.functional_requirements or []):
+                doc.add_paragraph(item, style='List Bullet')
+                
+            add_ieee_heading('C. Technology Stack', 2)
+            ts = req.recommended_tech_stack
+            ts_rows = [
+                ["Layer", "Technology"],
+                ["Frontend", ts.frontend if ts else "—"],
+                ["Backend", ts.backend if ts else "—"],
+                ["Database", ts.database if ts else "—"],
+                ["AI Framework", ts.ai_framework if ts else "—"]
+            ]
+            add_table_with_header(ts_rows, "TABLE I. TECHNOLOGY STACK")
             doc.add_page_break()
 
-        # ─── 5. DOCUMENTATION ───
-        if context.documentation:
-            d = context.documentation
-            add_ieee_heading("V. SYSTEM EXECUTION AND REFERENCE DOCUMENTATION", 1)
+        # II. Architecture
+        if arch:
+            add_ieee_heading('II. SYSTEM ARCHITECTURE', 1)
+            
+            add_ieee_heading('A. High Level Design', 2)
+            doc.add_paragraph(arch.high_level_architecture or "No architecture overview.")
+            
+            add_ieee_heading('B. Component Breakdown', 2)
+            if arch.component_breakdown:
+                c_rows = [["Component", "Type", "Description"]]
+                for comp in arch.component_breakdown:
+                    c_rows.append([comp.name, comp.type, comp.description])
+                add_table_with_header(c_rows, "TABLE II. COMPONENT BREAKDOWN")
 
-            if d.project_overview:
-                add_ieee_heading("A. System Execution Summary", 2)
-                doc.add_paragraph(d.project_overview)
+            add_ieee_heading('C. Data Flow', 2)
+            doc.add_paragraph(arch.data_flow or "Data flow not defined.")
+            doc.add_page_break()
 
-            if d.installation_guide:
-                add_ieee_heading("B. Deployment & Installation Blueprint", 2)
-                p = doc.add_paragraph()
-                p.paragraph_format.left_indent = Inches(0.5)
-                run = p.add_run(d.installation_guide)
-                run.font.name = 'Courier New'
-                run.font.size = Pt(9)
+        # III. Database
+        if db:
+            add_ieee_heading('III. DATABASE DESIGN', 1)
+            
+            add_ieee_heading('A. Entity Relationship Schema', 2)
+            if db.entities:
+                for idx, ent in enumerate(db.entities, 1):
+                    ent_rows = [["Attribute", "Definition"]]
+                    for attr in ent.attributes:
+                        parts = attr.split(" ", 1)
+                        name = parts[0]
+                        defn = parts[1] if len(parts) > 1 else "TEXT"
+                        ent_rows.append([name, defn])
+                    add_table_with_header(ent_rows, f"TABLE III-{idx}. ENTITY: {ent.name.upper()}")
+            else:
+                doc.add_paragraph("No entities defined.")
+            doc.add_page_break()
 
-            if d.api_documentation:
-                add_ieee_heading("C. API Interface Profiles", 2)
-                doc.add_paragraph(d.api_documentation)
+        # IV. Documentation
+        if docs:
+            add_ieee_heading('IV. DOCUMENTATION', 1)
+            
+            add_ieee_heading('A. README Content', 2)
+            doc.add_paragraph(docs.readme_md or "No README generated.")
+            
+            if docs.api_docs_md:
+                add_ieee_heading('B. API Documentation', 2)
+                doc.add_paragraph(docs.api_docs_md)
 
-            if d.developer_notes:
-                add_ieee_heading("D. Development Practices & Conventions", 2)
-                doc.add_paragraph(d.developer_notes)
-
-        # Save to byte stream
-        stream = io.BytesIO()
-        doc.save(stream)
-        return stream.getvalue()
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        return buffer.getvalue()
