@@ -10,6 +10,7 @@ from app.api.endpoints import (
     export_endpoint,
     docx_endpoint,
     srs_endpoint,
+    elicitation_endpoint,
 )
 
 api_router = APIRouter()
@@ -23,4 +24,5 @@ api_router.include_router(scaffold_endpoint.router, tags=["scaffold"])
 api_router.include_router(export_endpoint.router, tags=["export"])
 api_router.include_router(docx_endpoint.router, tags=["export"])
 api_router.include_router(srs_endpoint.router, tags=["export"])
+api_router.include_router(elicitation_endpoint.router, tags=["elicitation"])
 

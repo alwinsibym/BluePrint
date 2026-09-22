@@ -1,30 +1,42 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronDown, ChevronUp, RefreshCw, Sparkles, AlertCircle, Edit3, Save, Plus, Trash, Check } from "lucide-react";
+import {
+  Loader2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
+  Edit3, Plus, Trash, Check, MessageSquare, Zap, ArrowRight,
+  CheckCircle2, Clock, ChevronRight, User, Bot, RotateCcw,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { createRequirements, type RequirementsResponse, type UserStory } from "@/services/requirements";
+import {
+  startElicitation, sendElicitationAnswer,
+  type ElicitationMessage, type ElicitationResponse,
+} from "@/services/elicitation";
 
-// ──────────────────────────────────────────────
-// Sub-components for display
-// ──────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
+const PHASES = [
+  { label: "Stakeholders & Context",       icon: "👥" },
+  { label: "Goals & Success Criteria",     icon: "🎯" },
+  { label: "Core Features & Workflows",    icon: "⚙️" },
+  { label: "System Boundaries",            icon: "🔲" },
+  { label: "Quality & Constraints",        icon: "📊" },
+  { label: "Edge Cases & Risks",           icon: "⚠️" },
+];
 
-interface AccordionSectionProps {
-  title: string;
-  badge?: number;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}
-
-function AccordionSection({ title, badge, children, defaultOpen = false }: AccordionSectionProps) {
+// ── Sub-components ─────────────────────────────────────────────────────────────
+function AccordionSection({
+  title, badge, children, defaultOpen = false,
+}: { title: string; badge?: number; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border border-border rounded-lg overflow-hidden mb-2">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(v => !v)}
         className="flex w-full items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/70 transition-colors text-sm font-medium text-foreground"
         aria-expanded={open}
       >
@@ -47,19 +59,17 @@ function BulletList({ items }: { items: string[] }) {
   if (!items.length) return <p className="text-muted-foreground italic text-xs">None provided.</p>;
   return (
     <ul className="list-disc list-inside space-y-1">
-      {items.map((item, i) => (
-        <li key={i} className="text-sm leading-snug">{item}</li>
-      ))}
+      {items.map((item, i) => <li key={i} className="text-sm leading-snug">{item}</li>)}
     </ul>
   );
 }
 
 function TechStackGrid({ stack }: { stack: RequirementsResponse["recommended_tech_stack"] }) {
   const entries = [
-    { label: "Frontend Client", value: stack.frontend },
-    { label: "Backend Application", value: stack.backend },
-    { label: "Database Server", value: stack.database },
-    { label: "Inference Engine", value: stack.ai_framework },
+    { label: "Frontend", value: stack.frontend },
+    { label: "Backend", value: stack.backend },
+    { label: "Database", value: stack.database },
+    { label: "AI Engine", value: stack.ai_framework },
   ];
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -73,231 +83,393 @@ function TechStackGrid({ stack }: { stack: RequirementsResponse["recommended_tec
   );
 }
 
-function UserStoriesTable({ stories }: { stories: UserStory[] }) {
-  if (!stories.length) return <p className="text-muted-foreground italic text-xs">No user stories generated.</p>;
+// ── Phase progress bar ─────────────────────────────────────────────────────────
+function PhaseProgress({ currentPhase, progress }: { currentPhase: number; progress: number }) {
   return (
-    <div className="space-y-2">
-      {stories.map((s, i) => (
-        <div key={i} className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
-          <p><span className="font-medium text-primary">As a</span> {s.role},</p>
-          <p><span className="font-medium">I want to</span> {s.desire}</p>
-          <p><span className="font-medium text-success">so that</span> {s.benefit}.</p>
-        </div>
-      ))}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="font-medium">Elicitation Progress</span>
+        <span>{progress}%</span>
+      </div>
+      <Progress value={progress} className="h-2" />
+      <div className="flex gap-1.5 flex-wrap">
+        {PHASES.map((phase, i) => (
+          <div
+            key={i}
+            className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
+              i + 1 < currentPhase
+                ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                : i + 1 === currentPhase
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "bg-muted/40 text-muted-foreground border border-border"
+            }`}
+          >
+            <span>{phase.icon}</span>
+            <span className="hidden sm:inline">{phase.label.split(" ")[0]}</span>
+            {i + 1 < currentPhase && <CheckCircle2 className="h-2.5 w-2.5" />}
+            {i + 1 === currentPhase && <Clock className="h-2.5 w-2.5" />}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ──────────────────────────────────────────────
-// Main panel component
-// ──────────────────────────────────────────────
+// ── Chat bubble ────────────────────────────────────────────────────────────────
+function ChatBubble({ msg, isLatest }: { msg: ElicitationMessage; isLatest: boolean }) {
+  const isBot = msg.role === "assistant";
+  return (
+    <div className={`flex gap-2.5 ${isBot ? "items-start" : "items-start flex-row-reverse"} ${isLatest ? "animate-in fade-in slide-in-from-bottom-2 duration-300" : ""}`}>
+      <div className={`shrink-0 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+        isBot ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground border border-border"
+      }`}>
+        {isBot ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+      </div>
+      <div className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        isBot
+          ? "bg-primary/8 border border-primary/15 text-foreground rounded-tl-sm"
+          : "bg-muted/60 border border-border text-foreground rounded-tr-sm"
+      }`}>
+        {isBot && (
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-primary/70 mb-1">
+            Requirements Analyst • Phase {msg.phase}
+          </p>
+        )}
+        <p>{msg.content}</p>
+      </div>
+    </div>
+  );
+}
 
-export function RequirementsPanel({ 
+// ── Edit form ──────────────────────────────────────────────────────────────────
+function RequirementsEditForm({
+  result, onSave, onCancel,
+}: {
+  result: RequirementsResponse;
+  onSave: (r: RequirementsResponse) => void;
+  onCancel: () => void;
+}) {
+  const [editOverview, setEditOverview] = useState(result.project_overview || "");
+  const [editFunc, setEditFunc] = useState<string[]>([...(result.functional_requirements || [])]);
+  const [editNonFunc, setEditNonFunc] = useState<string[]>([...(result.non_functional_requirements || [])]);
+  const [editRoles, setEditRoles] = useState<string[]>([...(result.user_roles || [])]);
+  const [editStories, setEditStories] = useState<UserStory[]>([...(result.user_stories || [])]);
+  const [editStack, setEditStack] = useState({ ...(result.recommended_tech_stack) });
+
+  const addBullet = (setter: React.Dispatch<React.SetStateAction<string[]>>) =>
+    setter(p => [...p, ""]);
+  const updBullet = (i: number, v: string, setter: React.Dispatch<React.SetStateAction<string[]>>) =>
+    setter(p => p.map((x, j) => j === i ? v : x));
+  const delBullet = (i: number, setter: React.Dispatch<React.SetStateAction<string[]>>) =>
+    setter(p => p.filter((_, j) => j !== i));
+
+  const handleSave = () => {
+    onSave({
+      ...result,
+      project_overview: editOverview,
+      functional_requirements: editFunc.filter(Boolean),
+      non_functional_requirements: editNonFunc.filter(Boolean),
+      user_roles: editRoles.filter(Boolean),
+      user_stories: editStories,
+      recommended_tech_stack: editStack,
+    });
+  };
+
+  const EditableList = ({
+    label, items, setter,
+  }: { label: string; items: string[]; setter: React.Dispatch<React.SetStateAction<string[]>> }) => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</label>
+        <Button variant="ghost" size="sm" onClick={() => addBullet(setter)} className="h-6 gap-1 text-primary text-xs">
+          <Plus className="h-3 w-3" /> Add
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((f, i) => (
+          <div key={i} className="flex gap-2">
+            <Input value={f} onChange={e => updBullet(i, e.target.value, setter)} className="bg-background h-8 text-sm" placeholder="Enter requirement..." />
+            <Button variant="ghost" size="icon" onClick={() => delBullet(i, setter)} className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0">
+              <Trash className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground italic pl-1">No items yet. Click Add to create one.</p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5 border border-emerald-500/30 bg-emerald-500/5 rounded-xl p-4">
+      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+        <div>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Review & Refine Requirements</p>
+          <p className="text-xs text-muted-foreground mt-0.5">These were synthesised from your interview. Edit freely before approving.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Check className="h-3.5 w-3.5" /> Approve & Continue
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Overview</label>
+        <Textarea value={editOverview} onChange={e => setEditOverview(e.target.value)} rows={3} className="bg-background text-sm" />
+      </div>
+
+      <EditableList label="Functional Requirements" items={editFunc} setter={setEditFunc} />
+      <EditableList label="Non-Functional Requirements" items={editNonFunc} setter={setEditNonFunc} />
+      <EditableList label="User Roles" items={editRoles} setter={setEditRoles} />
+
+      <div className="space-y-2">
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technology Stack</label>
+        <div className="grid grid-cols-2 gap-2 bg-background p-3 rounded-lg border">
+          {(["frontend", "backend", "database", "ai_framework"] as const).map(k => (
+            <div key={k}>
+              <span className="text-[10px] text-muted-foreground uppercase font-medium">{k.replace("_", " ")}</span>
+              <Input
+                value={editStack[k]}
+                onChange={e => setEditStack(p => ({ ...p, [k]: e.target.value }))}
+                className="h-8 mt-1 text-sm"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User Stories</label>
+          <Button variant="ghost" size="sm" onClick={() => setEditStories(p => [...p, { role: "", desire: "", benefit: "" }])} className="h-6 gap-1 text-primary text-xs">
+            <Plus className="h-3 w-3" /> Add
+          </Button>
+        </div>
+        {editStories.map((story, i) => (
+          <div key={i} className="flex flex-col gap-1 bg-background p-2.5 rounded-lg border">
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">As a</span>
+              <Input value={story.role} onChange={e => setEditStories(p => p.map((s, j) => j === i ? { ...s, role: e.target.value } : s))} className="h-7 text-xs flex-1" />
+              <Button variant="ghost" size="icon" onClick={() => setEditStories(p => p.filter((_, j) => j !== i))} className="h-7 w-7 text-destructive shrink-0">
+                <Trash className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">I want to</span>
+              <Input value={story.desire} onChange={e => setEditStories(p => p.map((s, j) => j === i ? { ...s, desire: e.target.value } : s))} className="h-7 text-xs flex-1" />
+            </div>
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">So that</span>
+              <Input value={story.benefit} onChange={e => setEditStories(p => p.map((s, j) => j === i ? { ...s, benefit: e.target.value } : s))} className="h-7 text-xs flex-1" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-end pt-2 border-t">
+        <Button size="sm" onClick={handleSave} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Check className="h-3.5 w-3.5" /> Approve & Continue to Architecture
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+export function RequirementsPanel({
   initialIdea,
   requirements: initialRequirements,
-  onRequirementsGenerated 
-}: { 
+  onRequirementsGenerated,
+}: {
   initialIdea?: string | null;
   requirements?: RequirementsResponse | null;
   onRequirementsGenerated?: (data: RequirementsResponse) => void;
 }) {
-  const [idea, setIdea] = useState("");
+  // Mode: "choose" | "interview" | "quick" | "review" | "done"
+  const [mode, setMode] = useState<"choose" | "interview" | "quick" | "review" | "done">(
+    initialRequirements ? "done" : "choose"
+  );
+
+  // Interview state
+  const [idea, setIdea] = useState(initialIdea || "");
+  const [history, setHistory] = useState<ElicitationMessage[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState("");
+  const [currentPhase, setCurrentPhase] = useState(1);
+  const [phaseLabel, setPhaseLabel] = useState("");
+  const [phaseDesc, setPhaseDesc] = useState("");
+  const [progressPct, setProgressPct] = useState(0);
+  const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<RequirementsResponse | null>(initialRequirements ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [lastIdea, setLastIdea] = useState("");
-  const [showEditForm, setShowEditForm] = useState(false);
 
-  // Interactive editing states
+  // Result state
+  const [result, setResult] = useState<RequirementsResponse | null>(initialRequirements ?? null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editOverview, setEditOverview] = useState("");
-  const [editObjectives, setEditObjectives] = useState<string[]>([]);
-  const [editFunc, setEditFunc] = useState<string[]>([]);
-  const [editNonFunc, setEditNonFunc] = useState<string[]>([]);
-  const [editRoles, setEditRoles] = useState<string[]>([]);
-  const [editStories, setEditStories] = useState<UserStory[]>([]);
-  const [editStack, setEditStack] = useState<RequirementsResponse["recommended_tech_stack"]>({
-    frontend: "",
-    backend: "",
-    database: "",
-    ai_framework: ""
-  });
 
-  // Sync state if initialRequirements updates
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const answerRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keep display history (without the pending question)
+  const displayHistory = history.filter(m => m.role === "user");
+
   useEffect(() => {
     if (initialRequirements) {
       setResult(initialRequirements);
+      setMode("done");
     }
   }, [initialRequirements]);
 
-  // Load editing state
-  const startEditing = () => {
-    if (!result) return;
-    setEditOverview(result.project_overview || "");
-    setEditObjectives([...(result.objectives || [])]);
-    setEditFunc([...(result.functional_requirements || [])]);
-    setEditNonFunc([...(result.non_functional_requirements || [])]);
-    setEditRoles([...(result.user_roles || [])]);
-    setEditStories([...(result.user_stories || [])]);
-    setEditStack({ ...(result.recommended_tech_stack || { frontend: "", backend: "", database: "", ai_framework: "" }) });
-    setIsEditing(true);
-  };
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [history, currentQuestion]);
 
-  const saveEdits = () => {
-    if (!result) return;
-    const updated: RequirementsResponse = {
-      ...result,
-      project_overview: editOverview,
-      objectives: editObjectives,
-      functional_requirements: editFunc,
-      non_functional_requirements: editNonFunc,
-      user_roles: editRoles,
-      user_stories: editStories,
-      recommended_tech_stack: editStack,
-    };
-    setResult(updated);
-    setIsEditing(false);
-    if (onRequirementsGenerated) onRequirementsGenerated(updated);
-    toast.success("Requirements refined and validated by developer!");
-  };
-
-  // Helper arrays update functions
-  const addBullet = (setter: React.Dispatch<React.SetStateAction<string[]>>) => {
-    setter(prev => [...prev, "New requirement specification"]);
-  };
-
-  const updateBullet = (idx: number, val: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
-    setter(prev => prev.map((item, i) => i === idx ? val : item));
-  };
-
-  const removeBullet = (idx: number, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
-    setter(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const addUserStory = () => {
-    setEditStories(prev => [...prev, { role: "User", desire: "do action", benefit: "get result" }]);
-  };
-
-  const updateUserStory = (idx: number, key: keyof UserStory, val: string) => {
-    setEditStories(prev => prev.map((story, i) => i === idx ? { ...story, [key]: val } : story));
-  };
-
-  const removeUserStory = (idx: number) => {
-    setEditStories(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleGenerate = async (ideaToUse?: string) => {
-    const input = (ideaToUse ?? idea).trim();
-    if (!input) {
-      toast.error("Please describe your project idea first.");
-      return;
-    }
+  // Start the interview
+  const handleStartInterview = async () => {
+    if (!idea.trim()) { toast.error("Please describe your project idea first."); return; }
     setLoading(true);
     setError(null);
-    setResult(null);
-    setLastIdea(input);
-
+    setMode("interview");
     try {
-      const data = await createRequirements(input);
-      setResult(data);
-      setShowEditForm(false);
-      if (onRequirementsGenerated) onRequirementsGenerated(data);
-      toast.success("Requirements document generated!");
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        (err instanceof Error ? err.message : "Unknown error");
-      setError(msg);
-      toast.error("Failed to generate requirements.");
+      const res = await startElicitation(idea.trim());
+      setHistory(res.history);
+      setCurrentQuestion(res.question);
+      setCurrentPhase(res.phase);
+      setPhaseLabel(res.phase_label);
+      setPhaseDesc(res.phase_description);
+      setProgressPct(res.progress_pct);
+      answerRef.current?.focus();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? err?.message ?? "Failed to start interview.");
+      setMode("choose");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRetry = () => handleGenerate(lastIdea);
+  // Send an answer
+  const handleSendAnswer = async () => {
+    if (!answer.trim()) { toast.error("Please provide an answer before continuing."); return; }
+    const myAnswer = answer.trim();
+    setAnswer("");
+    setLoading(true);
+    setError(null);
 
-  useEffect(() => {
-    if (initialIdea && initialIdea.trim() !== "" && initialIdea !== lastIdea) {
-      setIdea(initialIdea);
-      handleGenerate(initialIdea);
+    // Optimistically append user message to display
+    const userMsg: ElicitationMessage = { role: "user", content: myAnswer, phase: currentPhase };
+    const updatedHistory = [...history, userMsg];
+    setHistory(updatedHistory);
+
+    try {
+      const res = await sendElicitationAnswer(idea.trim(), myAnswer, history);
+      setHistory(res.history);
+      setCurrentPhase(res.phase);
+      setPhaseLabel(res.phase_label);
+      setPhaseDesc(res.phase_description);
+      setProgressPct(res.progress_pct);
+
+      if (res.is_complete && res.requirements) {
+        setResult(res.requirements);
+        setCurrentQuestion("");
+        setMode("review");
+        toast.success("Interview complete! Review your synthesised requirements below.", { duration: 5000 });
+      } else {
+        setCurrentQuestion(res.question);
+        setTimeout(() => answerRef.current?.focus(), 100);
+      }
+    } catch (err: any) {
+      // Rollback optimistic update
+      setHistory(history);
+      setAnswer(myAnswer);
+      setError(err?.response?.data?.detail ?? err?.message ?? "Failed to send answer.");
+    } finally {
+      setLoading(false);
     }
-  }, [initialIdea]);
+  };
 
+  // Quick generate (legacy)
+  const handleQuickGenerate = async () => {
+    if (!idea.trim()) { toast.error("Please describe your project idea first."); return; }
+    setLoading(true);
+    setError(null);
+    setMode("quick");
+    try {
+      const data = await createRequirements(idea.trim());
+      setResult(data);
+      setMode("review");
+      if (onRequirementsGenerated) onRequirementsGenerated(data);
+      toast.success("Requirements generated! Review and edit below.");
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? err?.message ?? "Generation failed.");
+      setMode("choose");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Approve requirements
+  const handleApprove = (updated: RequirementsResponse) => {
+    setResult(updated);
+    setIsEditing(false);
+    setMode("done");
+    if (onRequirementsGenerated) onRequirementsGenerated(updated);
+    toast.success("Requirements approved and locked in! Proceed to Architecture →");
+  };
+
+  // Reset
+  const handleReset = () => {
+    setMode("choose");
+    setHistory([]);
+    setCurrentQuestion("");
+    setAnswer("");
+    setResult(null);
+    setError(null);
+    setProgressPct(0);
+  };
+
+  // Keyboard shortcut: Ctrl+Enter sends answer
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") handleSendAnswer();
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <Card className="shadow-card">
       <CardHeader className="pb-3 border-b border-border/50">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Requirements Specification (IEEE Std 830)
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Requirements Elicitation
+              {mode === "done" && <Badge variant="outline" className="text-emerald-600 border-emerald-500/40 bg-emerald-500/10 ml-1">Approved</Badge>}
+              {mode === "interview" && <Badge variant="outline" className="text-primary border-primary/40 bg-primary/10 ml-1">Interview Active</Badge>}
             </CardTitle>
             <CardDescription>
-              Interactive requirements refinement panel. Edit to eliminate AI hallucinations.
+              {mode === "choose" && "Guided interview following BABOK v3 methodology — no AI hallucination"}
+              {mode === "interview" && `Phase ${currentPhase}/6 — ${phaseLabel}`}
+              {(mode === "review" || mode === "quick") && "Synthesised from your answers — review and approve"}
+              {mode === "done" && "Developer-validated requirements specification (IEEE Std 830)"}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {result && !loading && !isEditing && (
-              <Button variant="outline" size="sm" onClick={startEditing} className="gap-1 text-primary">
-                <Edit3 className="h-3.5 w-3.5" /> Refine Specs
-              </Button>
-            )}
-            {result && !loading && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowEditForm(!showEditForm)}
-              >
-                {showEditForm ? "Hide Form" : "Re-generate"}
-              </Button>
+            {mode === "done" && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="gap-1 text-primary">
+                  <Edit3 className="h-3.5 w-3.5" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleReset} className="gap-1 text-muted-foreground">
+                  <RotateCcw className="h-3.5 w-3.5" /> Re-elicit
+                </Button>
+              </>
             )}
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4 pt-4">
-        {/* Input area */}
-        {(!result || showEditForm) && (
-          <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-            <div className="space-y-2">
-              <label htmlFor="req-idea-textarea" className="text-sm font-medium text-foreground">
-                Describe your project idea in detail:
-              </label>
-              <Textarea
-                id="req-idea-textarea"
-                placeholder="e.g. A web app for personal budgeting with charts, CSV export, and AI-powered spending insights..."
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-                rows={4}
-                disabled={loading}
-                className="resize-none bg-background"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                id="req-generate-btn"
-                onClick={() => handleGenerate()}
-                disabled={loading || !idea.trim()}
-                className="gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate Requirements
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Error state */}
+        {/* ── Error ─────────────────────────────────────────────────────── */}
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -305,176 +477,240 @@ export function RequirementsPanel({
           </div>
         )}
 
-        {/* Loading skeleton */}
-        {loading && (
-          <div className="space-y-2 mt-4 animate-pulse">
-            <p className="text-xs text-muted-foreground animate-pulse mb-2">Analyzing requirements & user stories…</p>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 rounded-lg bg-muted/60" />
-            ))}
-          </div>
-        )}
-
-        {/* ─── INTERACTIVE EDITOR ─── */}
-        {result && isEditing && (
-          <div className="space-y-4 border border-brand/30 bg-brand/5 rounded-xl p-4 mt-4">
-            <div className="flex items-center justify-between border-b border-brand/20 pb-2 mb-4">
-              <span className="text-sm font-semibold text-brand">Refining Project Requirements</span>
-              <Button size="sm" onClick={saveEdits} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Check className="h-4 w-4" /> Approve & Save
-              </Button>
-            </div>
-
-            {/* Overview */}
+        {/* ── MODE: CHOOSE ──────────────────────────────────────────────── */}
+        {mode === "choose" && (
+          <div className="space-y-4">
+            {/* Idea input */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Scope & Overview</label>
+              <label className="text-sm font-medium text-foreground">
+                Describe your project idea in a sentence or two:
+              </label>
               <Textarea
-                value={editOverview}
-                onChange={(e) => setEditOverview(e.target.value)}
-                rows={4}
-                className="bg-background"
+                placeholder="e.g. A hospital inventory management system that tracks medical supplies across wards and alerts staff when stock is low..."
+                value={idea}
+                onChange={e => setIdea(e.target.value)}
+                rows={3}
+                className="resize-none bg-background"
               />
             </div>
 
-            {/* Functional Requirements */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Functional Requirements</label>
-                <Button variant="ghost" size="sm" onClick={() => addBullet(setEditFunc)} className="h-6 gap-1 text-primary text-xs">
-                  <Plus className="h-3 w-3" /> Add Row
-                </Button>
-              </div>
-              <div className="space-y-1.5">
-                {editFunc.map((f, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input value={f} onChange={(e) => updateBullet(i, e.target.value, setEditFunc)} className="bg-background h-8" />
-                    <Button variant="ghost" size="icon" onClick={() => removeBullet(i, setEditFunc)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                      <Trash className="h-3.5 w-3.5" />
-                    </Button>
+            {/* Mode cards */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Interview mode */}
+              <button
+                type="button"
+                onClick={handleStartInterview}
+                disabled={loading || !idea.trim()}
+                className="group text-left rounded-xl border-2 border-primary/30 bg-primary/5 p-4 hover:border-primary/60 hover:bg-primary/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <MessageSquare className="h-4 w-4" />
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Non-Functional Requirements */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Non-Functional Requirements</label>
-                <Button variant="ghost" size="sm" onClick={() => addBullet(setEditNonFunc)} className="h-6 gap-1 text-primary text-xs">
-                  <Plus className="h-3 w-3" /> Add Row
-                </Button>
-              </div>
-              <div className="space-y-1.5">
-                {editNonFunc.map((nf, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input value={nf} onChange={(e) => updateBullet(i, e.target.value, setEditNonFunc)} className="bg-background h-8" />
-                    <Button variant="ghost" size="icon" onClick={() => removeBullet(i, setEditNonFunc)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                      <Trash className="h-3.5 w-3.5" />
-                    </Button>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Guided Interview</p>
+                    <p className="text-[10px] text-primary font-medium uppercase tracking-wide">Recommended</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  AI interviews you like a real Business Analyst across 6 structured phases 
+                  (BABOK v3). Requirements come from <em>your</em> answers — not AI guesswork.
+                </p>
+                <div className="flex flex-wrap gap-1 mt-3">
+                  {PHASES.map(p => (
+                    <span key={p.label} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                      {p.icon} {p.label.split(" ")[0]}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 mt-3 text-xs text-primary font-medium">
+                  Start Interview <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </button>
 
-            {/* Tech Stack */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Technology Profile</label>
-              <div className="grid grid-cols-2 gap-2 bg-background p-3 rounded-lg border">
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Frontend</span>
-                  <Input value={editStack.frontend} onChange={(e) => setEditStack(prev => ({ ...prev, frontend: e.target.value }))} className="h-8 mt-1" />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Backend</span>
-                  <Input value={editStack.backend} onChange={(e) => setEditStack(prev => ({ ...prev, backend: e.target.value }))} className="h-8 mt-1" />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Database</span>
-                  <Input value={editStack.database} onChange={(e) => setEditStack(prev => ({ ...prev, database: e.target.value }))} className="h-8 mt-1" />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase font-medium">Inference</span>
-                  <Input value={editStack.ai_framework} onChange={(e) => setEditStack(prev => ({ ...prev, ai_framework: e.target.value }))} className="h-8 mt-1" />
-                </div>
-              </div>
-            </div>
-
-            {/* User Stories */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User Stories</label>
-                <Button variant="ghost" size="sm" onClick={addUserStory} className="h-6 gap-1 text-primary text-xs">
-                  <Plus className="h-3 w-3" /> Add Use Case
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {editStories.map((story, i) => (
-                  <div key={i} className="flex flex-col gap-1.5 bg-background p-2.5 rounded-lg border border-border">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground font-medium">As a</span>
-                      <Input value={story.role} onChange={(e) => updateUserStory(i, "role", e.target.value)} className="h-7 text-xs flex-1" />
-                      <Button variant="ghost" size="icon" onClick={() => removeUserStory(i)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
-                        <Trash className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground font-medium">I want to</span>
-                      <Input value={story.desire} onChange={(e) => updateUserStory(i, "desire", e.target.value)} className="h-7 text-xs flex-1" />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground font-medium">so that</span>
-                      <Input value={story.benefit} onChange={(e) => updateUserStory(i, "benefit", e.target.value)} className="h-7 text-xs flex-1" />
-                    </div>
+              {/* Quick mode */}
+              <button
+                type="button"
+                onClick={handleQuickGenerate}
+                disabled={loading || !idea.trim()}
+                className="group text-left rounded-xl border border-border bg-muted/20 p-4 hover:border-border/80 hover:bg-muted/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted border border-border text-muted-foreground">
+                    <Zap className="h-4 w-4" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Quick Generate</p>
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Fast / Demo mode</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  AI generates requirements from your description in one shot. 
+                  Faster, but may hallucinate details you didn't specify.
+                </p>
+                <div className="flex items-center gap-1 mt-7 text-xs text-muted-foreground font-medium">
+                  Generate Now <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </button>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button size="sm" onClick={saveEdits} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Check className="h-4 w-4" /> Save Specifications
-              </Button>
-            </div>
+            {loading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Starting elicitation session…
+              </div>
+            )}
           </div>
         )}
 
-        {/* ─── DISPLAY RESULT ─── */}
-        {result && !loading && !isEditing && (
+        {/* ── MODE: INTERVIEW ────────────────────────────────────────────── */}
+        {mode === "interview" && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-              <h2 className="font-semibold text-base text-foreground">{result.project_name}</h2>
-              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{result.project_overview}</p>
+            {/* Phase progress */}
+            <PhaseProgress currentPhase={currentPhase} progress={progressPct} />
+
+            {/* Chat transcript */}
+            <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 scroll-smooth">
+              {/* Render completed turns */}
+              {history.map((msg, i) => (
+                <ChatBubble key={i} msg={msg} isLatest={i === history.length - 1} />
+              ))}
+
+              {/* Current question (not yet in history when waiting for answer) */}
+              {currentQuestion && !loading && (
+                <ChatBubble
+                  msg={{ role: "assistant", content: currentQuestion, phase: currentPhase }}
+                  isLatest={true}
+                />
+              )}
+
+              {/* Loading indicator */}
+              {loading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse pl-10">
+                  <div className="flex gap-1">
+                    <div className="h-1.5 w-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <div className="h-1.5 w-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <div className="h-1.5 w-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  Requirements Analyst is thinking…
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Answer input */}
+            {!loading && currentQuestion && (
+              <div className="space-y-2 border-t border-border pt-3">
+                <div className="flex items-start gap-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <Textarea
+                    ref={answerRef}
+                    placeholder="Type your answer… (Ctrl+Enter to send)"
+                    value={answer}
+                    onChange={e => setAnswer(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    rows={3}
+                    className="resize-none bg-background flex-1 text-sm"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="flex items-center justify-between pl-9">
+                  <p className="text-[10px] text-muted-foreground">
+                    Phase {currentPhase}/6 · {phaseDesc}
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleSendAnswer}
+                    disabled={loading || !answer.trim()}
+                    className="gap-1.5"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── MODE: QUICK LOADING ────────────────────────────────────────── */}
+        {mode === "quick" && loading && (
+          <div className="space-y-2 mt-2 animate-pulse">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating requirements from your description…
+            </div>
+            {[...Array(5)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-muted/60" />)}
+          </div>
+        )}
+
+        {/* ── MODE: REVIEW (edit form) ───────────────────────────────────── */}
+        {(mode === "review") && result && !loading && (
+          <RequirementsEditForm
+            result={result}
+            onSave={handleApprove}
+            onCancel={() => { setMode("choose"); setResult(null); }}
+          />
+        )}
+
+        {/* ── MODE: DONE (display result) ────────────────────────────────── */}
+        {mode === "done" && result && !isEditing && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <h2 className="font-semibold text-base text-foreground">{result.project_name}</h2>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{result.project_overview}</p>
             </div>
 
             <AccordionSection title="Objectives" badge={result.objectives?.length} defaultOpen>
               <BulletList items={result.objectives || []} />
             </AccordionSection>
-
             <AccordionSection title="Functional Requirements" badge={result.functional_requirements?.length} defaultOpen>
               <BulletList items={result.functional_requirements || []} />
             </AccordionSection>
-
             <AccordionSection title="Non-Functional Requirements" badge={result.non_functional_requirements?.length}>
               <BulletList items={result.non_functional_requirements || []} />
             </AccordionSection>
-
             <AccordionSection title="User Roles" badge={result.user_roles?.length}>
               <BulletList items={result.user_roles || []} />
             </AccordionSection>
-
             <AccordionSection title="User Stories" badge={result.user_stories?.length}>
-              <UserStoriesTable stories={result.user_stories || []} />
+              {(result.user_stories || []).map((s, i) => (
+                <div key={i} className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm mb-2">
+                  <p><span className="font-medium text-primary">As a</span> {s.role},</p>
+                  <p><span className="font-medium">I want to</span> {s.desire}</p>
+                  <p><span className="font-medium text-emerald-600">so that</span> {s.benefit}.</p>
+                </div>
+              ))}
             </AccordionSection>
-
             <AccordionSection title="Suggested Modules" badge={result.suggested_modules?.length}>
               <BulletList items={result.suggested_modules || []} />
             </AccordionSection>
-
+            <AccordionSection title="Assumptions & Constraints">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Assumptions</p>
+                <BulletList items={result.assumptions || []} />
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mt-3">Constraints</p>
+                <BulletList items={result.constraints || []} />
+              </div>
+            </AccordionSection>
             <AccordionSection title="Recommended Tech Stack">
               <TechStackGrid stack={result.recommended_tech_stack} />
             </AccordionSection>
           </div>
+        )}
+
+        {/* Edit overlay */}
+        {mode === "done" && result && isEditing && (
+          <RequirementsEditForm
+            result={result}
+            onSave={handleApprove}
+            onCancel={() => setIsEditing(false)}
+          />
         )}
       </CardContent>
     </Card>
