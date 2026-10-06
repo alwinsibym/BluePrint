@@ -7,6 +7,7 @@ import { ArchitecturePanel } from "@/components/dashboard/ArchitecturePanel";
 import { DatabasePanel } from "@/components/dashboard/DatabasePanel";
 import { DocumentationPanel } from "@/components/dashboard/DocumentationPanel";
 import { ScaffoldPanel } from "@/components/dashboard/ScaffoldPanel";
+import { ReviewPanel } from "@/components/dashboard/ReviewPanel";
 import { RequirementsResponse } from "@/services/requirements";
 import { ArchitectureResponse } from "@/services/architecture";
 import { DatabaseResponse, ProjectContextInput } from "@/services/database";
@@ -272,6 +273,7 @@ export function ResultsTabs({
             <TabsTrigger value="docs">Documentation</TabsTrigger>
             <TabsTrigger value="scaffold">🏗 Project</TabsTrigger>
             <TabsTrigger value="structure">Structure</TabsTrigger>
+            <TabsTrigger value="critique">AI Critique</TabsTrigger>
           </TabsList>
 
           <TabsContent value="requirements" className="mt-4">
@@ -317,6 +319,10 @@ export function ResultsTabs({
 
           <TabsContent value="structure" className="mt-4">
             <CodeBlock>{sampleStructure}</CodeBlock>
+          </TabsContent>
+
+          <TabsContent value="critique" className="mt-4">
+            <ReviewPanel context={projectContext} />
           </TabsContent>
         </Tabs>
       </CardContent>
