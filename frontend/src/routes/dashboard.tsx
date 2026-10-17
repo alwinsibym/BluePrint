@@ -146,11 +146,7 @@ function Dashboard() {
     let database: DatabaseResponse | null = null;
     let documentation: DocumentationResponse | null = null;
 
-    const runStep = async <T>(
-      stepId: PipelineStepId,
-      agentIdx: number,
-      fn: () => Promise<T>
-    ): Promise<T> => {
+    async function runStep<T>(stepId: PipelineStepId, agentIdx: number, fn: () => Promise<T>): Promise<T> {
       const start = Date.now();
       setCurrentStep(stepId);
       updateAgentState(stepId, "running", 10);

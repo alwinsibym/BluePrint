@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/AuthContext"; // added
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -66,6 +67,15 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<"google" | "github" | null>(null);
 
+  const { session, loading: authLoading } = useAuth();
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (session) {
+      navigate({ to: "/dashboard" });
+    }
+  }, [session, navigate]);
+
   const {
     register,
     handleSubmit,
@@ -89,7 +99,7 @@ function LoginPage() {
     setOauthLoading(provider);
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { redirectTo: `${window.location.origin}/login` },
     });
     if (error) {
       toast.error(error.message);
@@ -98,7 +108,14 @@ function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/20">
+    <>
+      {authLoading && (
+        <div className="fixed inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm z-50">
+          <Loader2 className="h-12 w-12 animate-spin text-brand" />
+          <span className="ml-2 text-xl font-medium text-foreground">Loading…</span>
+        </div>
+      )}
+      <div className="flex min-h-screen flex-col bg-muted/20">
       {/* Ambient glow */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-40 left-1/2 h-[500px] w-[800px] -translate-x-1/2 rounded-full bg-brand-soft blur-3xl opacity-50" />
@@ -142,7 +159,7 @@ function LoginPage() {
                 variant="outline"
                 className="h-10 gap-2 hover:bg-muted/60"
                 onClick={() => handleOAuth("google")}
-                disabled={!!oauthLoading || isSubmitting}
+                disabled={!!oauthLoading || isSubmitting || authLoading}
               >
                 {oauthLoading === "google" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -157,7 +174,7 @@ function LoginPage() {
                 variant="outline"
                 className="h-10 gap-2 hover:bg-muted/60"
                 onClick={() => handleOAuth("github")}
-                disabled={!!oauthLoading || isSubmitting}
+                disabled={!!oauthLoading || isSubmitting || authLoading}
               >
                 {oauthLoading === "github" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -269,5 +286,6 @@ function LoginPage() {
         </div>
       </main>
     </div>
+    </>
   );
 }
